@@ -4,14 +4,14 @@ import os
 import requests
 from datetime import datetime, timedelta, timezone
 
-# --- 1. 持倉清單 (13:00 報告) ---
+# --- 1. 持倉清單 ---
 MY_PORTFOLIO = {
-    '0050.TW': ['0050', 20],   # 月線
-    '00941.TW': ['00941', 10], # 10日線
-    '2646.TW': ['星宇航空', 20] # 月線
+    '0050.TW': ['0050', 20],   
+    '00941.TW': ['00941', 10], 
+    '2646.TW': ['星宇航空', 20] 
 }
 
-# --- 2. 題材池 (09:30 篩選) ---
+# --- 2. 題材池 ---
 THEME_POOL = {
     '2330.TW': ['台積電', 'AI/半導體'],
     '2317.TW': ['鴻海', 'AI/半導體'],
@@ -44,55 +44,55 @@ def main():
     user_id = os.environ.get('LINE_USER_ID')
     tz_tw = timezone(timedelta(hours=8))
     now = datetime.now(tz_tw)
-    hour = now.hour
     
-    if hour < 11: # 09:30 模式
-        msg = f"🌅 宜駿的早盤題材推薦 ({now.strftime('%H:%M')})\n"
-        msg += "篩選標準：強勢站上 5MA\n━━━━━━━━━━━━━━━\n"
-        categorized_results = {}
+    if now.hour < 11: # 09:30 模式
+        msg = f"🌅 宜駿的早盤題材分析\n📅 {now.strftime('%Y/%m/%d %H:%M')}\n"
+        msg += "━━━━━━━━━━━━━━\n"
+        msg += "🎯 篩選標準：強勢站上 5MA\n"
+        
+        categorized = {}
         for t, info in THEME_POOL.items():
-            name, category = info
+            name, cat = info
             res = get_status(t, 5)
             if res and res[2] >= 0:
-                if category not in categorized_results:
-                    categorized_results[category] = []
-                categorized_results[category].append(f"{name}({t.split('.')[0]})")
+                if cat not in categorized: categorized[cat] = []
+                categorized[cat].append(f"{name}")
         
-        if categorized_results:
-            for cat, stocks in categorized_results.items():
-                msg += f"【{cat}】\n   {', '.join(stocks)}\n"
-            msg += "\n💡 建議加入今日觀察清單"
+        if categorized:
+            for cat, stocks in categorized.items():
+                msg += f"\n【{cat}】\n  🚀 {', '.join(stocks)}\n"
+            msg += "\n💡 建議列入今日動能觀察"
         else:
-            msg += "目前題材池中尚無標的符合 5MA 篩選標準。"
+            msg += "\n☕ 目前題材池尚無達標個股"
     
     else: # 13:00 模式
-        msg = f"📊 宜駿的 AGI 綜合報告 ({now.strftime('%H:%M')})\n━━━━━━━━━━━━━━━\n"
-        msg += "【持倉狀態回報】\n"
+        msg = f"📊 宜駿的 AGI 綜合報告\n📅 {now.strftime('%Y/%m/%d %H:%M')}\n"
+        msg += "━━━━━━━━━━━━━━\n"
+        msg += "📂 [持倉狀態監測]\n"
         for t, info in MY_PORTFOLIO.items():
             res = get_status(t, info[1])
             if res:
                 curr, ma, diff = res
-                status = "✅ 站上" if diff >= 0 else "⚠️ 跌破"
-                msg += f"• {info[0]}: {curr:.2f} ({status}{info[1]}MA {'+' if diff>=0 else ''}{diff:.2f})\n"
+                icon = "🟢" if diff >= 0 else "🔴"
+                status = "站上" if diff >= 0 else "跌破"
+                msg += f"{icon} {info[0]}: {curr:.2f}\n   ({status}{info[1]}MA | {'+' if diff>=0 else ''}{diff:.2f})\n"
         
-        msg += "\n【早盤題材動能追蹤】\n"
-        found_strong = False
+        msg += "\n🔥 [題材動能追蹤]\n"
+        found = False
         for t, info in THEME_POOL.items():
-            name, category = info
+            name, cat = info
             res = get_status(t, 5)
             if res and res[2] >= 0:
-                found_strong = True
-                msg += f"🔥 [{category}] {name}({t.split('.')[0]}) 領先均線 {res[2]:.2f}\n"
-        
-        if not found_strong:
-            msg += "今日題材股動能較弱，未維持在 5MA 之上。"
+                found = True
+                msg += f"🔸 {name} ({res[2]:.2f})\n"
+        if not found: msg += "   今日題材動能熄火"
 
     send_line_push(token, user_id, msg)
 
 def send_line_push(token, user_id, text):
     url = "https://api.line.me/v2/bot/message/push"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    payload = {"to": user_id, "messages": [{"type": "text", "text": text}]}
+    headers = {"Content-Type":"application/json", "Authorization":f"Bearer {token}"}
+    payload = {"to":user_id, "messages":[{"type":"text", "text":text}]}
     requests.post(url, json=payload, headers=headers)
 
 if __name__ == "__main__":
