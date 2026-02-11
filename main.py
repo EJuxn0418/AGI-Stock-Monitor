@@ -2,7 +2,7 @@ import yfinance as yf
 import pandas as pd
 import os
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # --- 宜駿的智慧化持倉清單 ---
 MY_STOCKS = {
@@ -15,16 +15,18 @@ def get_stock_data():
     access_token = os.environ.get('LINE_ACCESS_TOKEN')
     user_id = os.environ.get('LINE_USER_ID')
     
-    report_msg = f"\n📊 宜駿的 AGI 盤中報告 ({datetime.now().strftime('%m/%d %H:%M')})\n"
+    # 修正時區為台灣時間 (UTC+8)
+    tz_taiwan = timezone(timedelta(hours=8))
+    now_taiwan = datetime.now(tz_taiwan)
+    
+    report_msg = f"\n📊 宜駿的 AGI 盤中報告 ({now_taiwan.strftime('%m/%d %H:%M')})\n"
     report_msg += "━━━━━━━━━━━━━━━\n"
     
     for ticker, info in MY_STOCKS.items():
         name, ma_days = info
-        # 抓取即時數據
         df = yf.download(ticker, period="3mo", progress=False)
         if df.empty: continue
         
-        # 確保資料是最新的（當天盤中數據）
         current_price = float(df['Close'].iloc[-1])
         ma_value = float(df['Close'].rolling(window=ma_days).mean().iloc[-1])
         
