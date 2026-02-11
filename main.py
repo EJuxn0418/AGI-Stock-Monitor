@@ -12,7 +12,6 @@ MY_PORTFOLIO = {
 }
 
 # --- 2. 題材池 (09:30 篩選) ---
-# 格式: '代碼': ['公司名稱', '題材類別']
 THEME_POOL = {
     '2330.TW': ['台積電', 'AI/半導體'],
     '2317.TW': ['鴻海', 'AI/半導體'],
@@ -35,7 +34,8 @@ def get_status(ticker, ma_days):
         if df.empty: return None
         curr = float(df['Close'].iloc[-1])
         ma = float(df['Close'].rolling(window=ma_days).mean().iloc[-1])
-        return curr, ma, (curr >= ma)
+        diff = curr - ma
+        return curr, ma, diff
     except:
         return None
 
@@ -46,16 +46,14 @@ def main():
     now = datetime.now(tz_tw)
     hour = now.hour
     
-    if hour < 11: # 09:30 模式：推薦名單
+    if hour < 11: # 09:30 模式
         msg = f"🌅 宜駿的早盤題材推薦 ({now.strftime('%H:%M')})\n"
         msg += "篩選標準：強勢站上 5MA\n━━━━━━━━━━━━━━━\n"
-        
-        # 按題材分類整理
         categorized_results = {}
         for t, info in THEME_POOL.items():
             name, category = info
             res = get_status(t, 5)
-            if res and res[2]:
+            if res and res[2] >= 0:
                 if category not in categorized_results:
                     categorized_results[category] = []
                 categorized_results[category].append(f"{name}({t.split('.')[0]})")
@@ -67,23 +65,24 @@ def main():
         else:
             msg += "目前題材池中尚無標的符合 5MA 篩選標準。"
     
-    else: # 13:00 模式：綜合分析
+    else: # 13:00 模式
         msg = f"📊 宜駿的 AGI 綜合報告 ({now.strftime('%H:%M')})\n━━━━━━━━━━━━━━━\n"
         msg += "【持倉狀態回報】\n"
         for t, info in MY_PORTFOLIO.items():
             res = get_status(t, info[1])
             if res:
-                status = "✅ 站上" if res[2] else "⚠️ 跌破"
-                msg += f"• {info[0]}: {res[0]:.2f} ({status}{info[1]}MA)\n"
+                curr, ma, diff = res
+                status = "✅ 站上" if diff >= 0 else "⚠️ 跌破"
+                msg += f"• {info[0]}: {curr:.2f} ({status}{info[1]}MA {'+' if diff>=0 else ''}{diff:.2f})\n"
         
         msg += "\n【早盤題材動能追蹤】\n"
         found_strong = False
         for t, info in THEME_POOL.items():
             name, category = info
             res = get_status(t, 5)
-            if res and res[2]:
+            if res and res[2] >= 0:
                 found_strong = True
-                msg += f"🔥 [{category}] {name}({t.split('.')[0]}) 持續強勢\n"
+                msg += f"🔥 [{category}] {name}({t.split('.')[0]}) 領先均線 {res[2]:.2f}\n"
         
         if not found_strong:
             msg += "今日題材股動能較弱，未維持在 5MA 之上。"
