@@ -1,25 +1,26 @@
 name: AGI投資報告
 on:
   schedule:
-    # 台灣 09:30 (UTC 01:30) 與 13:00 (UTC 05:00)
-    - cron: '30 1 * * 1-5'
-    - cron: '0 5 * * 1-5'
-  workflow_dispatch: # 這會讓你的 GitHub 頁面多一個「手動執行」按鈕，方便測試
+    # 台灣 09:15 (UTC 01:15) - 預留緩衝給 09:30 報告
+    - cron: '15 1 * * 1-5'
+    # 台灣 12:45 (UTC 04:45) - 預留緩衝給 13:00 報告
+    - cron: '45 4 * * 1-5'
+  workflow_dispatch: # 手動執行按鈕
 
 jobs:
   run-analysis:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3 # 讓雲端機器人讀取你的程式碼
+      - uses: actions/checkout@v3
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10' # 設定 Python 環境
+          python-version: '3.10'
       - name: Install dependencies
-        run: pip install yfinance pandas requests line-bot-sdk # 安裝抓數據與傳 LINE 的工具
+        # 強制升級 yfinance 以確保能抓到最新資料
+        run: pip install --upgrade yfinance pandas requests
       - name: Execute analysis
         env:
-          # 這裡會讀取你在「第三部分」設定的安全鎖
           LINE_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-        run: python main.py # 叫機器人執行 main.py 這支程式
+        run: python main.py
