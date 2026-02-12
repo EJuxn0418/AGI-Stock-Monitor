@@ -4,14 +4,14 @@ import os
 import requests
 from datetime import datetime, timedelta, timezone
 
-# --- 1. 持倉清單 (13:00 報告) ---
+# --- 1. 持倉清單 ---
 MY_PORTFOLIO = {
     '0050.TW': ['0050', 20],   # 月線
     '00941.TW': ['00941', 10], # 10日線
     '2646.TW': ['星宇航空', 20] # 月線
 }
 
-# --- 2. 題材池 (09:30 篩選) ---
+# --- 2. 題材池 ---
 THEME_POOL = {
     '2330.TW': ['台積電', 'AI/半導體'],
     '2317.TW': ['鴻海', 'AI/半導體'],
@@ -28,50 +28,72 @@ THEME_POOL = {
     '1717.TW': ['長興', '化工/材料']
 }
 
-def get_status(ticker, ma_days):
+# --- 核心功能：取得「即時」價格與均線 ---
+def get_realtime_status(ticker, ma_days):
     try:
-        df = yf.download(ticker, period="3mo", progress=False)
-        if df.empty: return None
-        curr = float(df['Close'].iloc[-1])
-        ma = float(df['Close'].rolling(window=ma_days).mean().iloc[-1])
-        diff = curr - ma
-        return curr, ma, diff
-    except:
+        # 1. 抓取歷史日線 (用來算 MA)
+        # period='3mo' 確保有足夠天數算 MA
+        hist_df = yf.download(ticker, period="3mo", interval="1d", progress=False)
+        
+        # 2. 抓取「當下」分鐘線 (用來拿最新股價，解決資料不更新問題)
+        # period='1d', interval='1m' 強制抓今天的盤中資料
+        live_df = yf.download(ticker, period="1d", interval="1m", progress=False)
+        
+        if hist_df.empty: return None
+
+        # 計算 MA (使用日線資料)
+        ma_value = float(hist_df['Close'].rolling(window=ma_days).mean().iloc[-1])
+
+        # 決定現價：如果有抓到分鐘資料，就用分鐘資料(最準)；否則回退用日線
+        if not live_df.empty:
+            current_price = float(live_df['Close'].iloc[-1])
+        else:
+            # 如果現在還沒開盤或抓不到分鐘線，才用日線最後一筆
+            current_price = float(hist_df['Close'].iloc[-1])
+
+        diff = current_price - ma_value
+        return current_price, ma_value, diff
+    except Exception as e:
+        print(f"Error fetching {ticker}: {e}")
         return None
 
 def main():
     token = os.environ.get('LINE_ACCESS_TOKEN')
     user_id = os.environ.get('LINE_USER_ID')
+    
+    # 設定台灣時間
     tz_tw = timezone(timedelta(hours=8))
     now = datetime.now(tz_tw)
     
-    if now.hour < 11: # 09:30 模式：早盤推薦
+    # 判斷報告模式
+    # 只要是中午 12:00 以前執行，都算早盤報告 (即使 GitHub 遲到)
+    if now.hour < 12: 
         msg = f"\n🌅 宜駿的早盤題材推薦 ({now.strftime('%m/%d %H:%M')})\n"
-        msg += "🎯 標準：強勢站上 5MA\n━━━━━━━━━━━━━━━\n"
+        msg += "🎯 標準：強勢站上 5MA (即時數據)\n━━━━━━━━━━━━━━━\n"
         
         categorized_results = {}
         for t, info in THEME_POOL.items():
             name, category = info
-            res = get_status(t, 5)
-            if res and res[2] >= 0:
+            # 推薦看 5MA
+            res = get_realtime_status(t, 5)
+            if res and res[2] >= 0: # 站上 5MA
                 if category not in categorized_results:
                     categorized_results[category] = []
-                # 保留正負值資訊
-                categorized_results[category].append(f"{name}({t.split('.')[0]}) +{res[2]:.2f}")
+                categorized_results[category].append(f"{name} (+{res[2]:.2f})")
         
         if categorized_results:
             for cat, stocks in categorized_results.items():
                 msg += f"【{cat}】\n   🚀 {', '.join(stocks)}\n"
-            msg += "\n💡 建議加入今日觀察清單"
+            msg += "\n💡 以上為即時動能強勢股"
         else:
             msg += "目前題材池中尚無標的符合篩選標準。"
     
-    else: # 13:00 模式：完整綜合報告
+    else: # 12:00 以後算收盤/盤中綜合報告
         msg = f"\n📊 宜駿的 AGI 綜合報告 ({now.strftime('%H:%M')})\n"
         msg += "━━━━━━━━━━━━━━━\n"
         msg += "📂 [持倉狀態回報]\n"
         for t, info in MY_PORTFOLIO.items():
-            res = get_status(t, info[1])
+            res = get_realtime_status(t, info[1])
             if res:
                 curr, ma, diff = res
                 status = "✅ 站上" if diff >= 0 else "⚠️ 跌破"
@@ -84,7 +106,7 @@ def main():
         found_strong = False
         for t, info in THEME_POOL.items():
             name, category = info
-            res = get_status(t, 5)
+            res = get_realtime_status(t, 5)
             if res and res[2] >= 0:
                 found_strong = True
                 msg += f"🔸 [{category}] {name}: {res[0]:.2f} (領先 {res[2]:.2f})\n"
