@@ -1,12 +1,6 @@
 name: 宜駿的投資報告
-
 on:
-  schedule:
-    # 調整時間試試看 (UTC 01:25 -> 台灣 09:25)
-    - cron: '25 1 * * 1-5'
-    # 調整時間試試看 (UTC 04:55 -> 台灣 12:55)
-    - cron: '55 4 * * 1-5'
-  workflow_dispatch: # 這是手動執行按鈕，一定要有
+  workflow_dispatch: # 拆除舊鬧鐘，現在只接受外部「絕對準時」的遙控觸發
 
 jobs:
   run-analysis:
