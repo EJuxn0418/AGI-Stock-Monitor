@@ -20,10 +20,10 @@ MY_PORTFOLIO = {
 WATCH_LIST = {
     '2408.TW': '南亞科',
     '3374.TWO': '精材',
-    '4967.TW': '十銓',     # 新增：記憶體模組爆發
-    '2449.TW': '京元電子', # 新增：AI封測實質受惠
-    '1514.TW': '亞力',     # 新增：重電綠能落後補漲
-    '2354.TW': '鴻準'      # 新增：鴻海集團散熱機殼轉機
+    '4967.TW': '十銓',     
+    '2449.TW': '京元電子', 
+    '1514.TW': '亞力',     
+    '2354.TW': '鴻準'      
 }
 
 # ---------------------------------------------------
@@ -138,4 +138,32 @@ def main():
                 res = get_full_ma_status(t)
                 if res:
                     curr, ma5, ma10, ma20 = res
-                    msg += f"🔸 {name} ({curr:.2
+                    msg += f"🔸 {name} ({curr:.2f})\n"
+                    msg += f"   5MA: {ma5:.2f} {'🔺' if curr>=ma5 else '🔻'}\n"
+                    msg += f"   10MA: {ma10:.2f} {'🔺' if curr>=ma10 else '🔻'}\n"
+                    msg += f"   20MA: {ma20:.2f} {'🔺' if curr>=ma20 else '🔻'}\n"
+                    msg += "\n"
+
+        # 3. 題材動能
+        msg += "🔥 [早盤題材動能追蹤]\n"
+        found_strong = False
+        for t, info in THEME_POOL.items():
+            name, category = info
+            res = get_realtime_status(t, 5)
+            if res and res[2] >= 0:
+                found_strong = True
+                msg += f"   {name}: {res[0]:.2f} (領先 {res[2]:.2f})\n"
+        
+        if not found_strong:
+            msg += "   今日題材股動能較弱 (跌破5MA)。"
+
+    send_line_push(token, user_id, msg)
+
+def send_line_push(token, user_id, text):
+    url = "https://api.line.me/v2/bot/message/push"
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    payload = {"to": user_id, "messages": [{"type": "text", "text": text}]}
+    requests.post(url, json=payload, headers=headers)
+
+if __name__ == "__main__":
+    main()
