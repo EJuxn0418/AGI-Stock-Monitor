@@ -8,37 +8,41 @@ from datetime import datetime, timedelta, timezone
 # 1. 持倉清單 (Portfolio) - 監控特定均線
 # ---------------------------------------------------
 MY_PORTFOLIO = {
-    '0050.TW': ['0050', 20],   # 月線
-    '00941.TW': ['00941', 20], # 月線 (由10日線改為20日線)
-    '2646.TW': ['星宇航空', 20], # 月線
-    '3481.TW': ['群創', 5]     # 5日線 
+    '0050.TW': ['0050', 20],   # 月線防守
+    '00941.TW': ['00941', 20], # 月線防守
+    '2646.TW': ['星宇航空', 20], # 月線防守
+    '3481.TW': ['群創', 5]     # 5日線極短線攻擊
 }
 
 # ---------------------------------------------------
-# 2. 重點觀察池 (Watch List) - 全均線追蹤
+# 2. 重點觀察池 (Watch List) - 全均線追蹤 (5/10/20MA)
 # ---------------------------------------------------
 WATCH_LIST = {
     '2408.TW': '南亞科',
-    '3374.TWO': '精材'   # 修正：精材是上櫃公司，必須用 .TWO
+    '3374.TWO': '精材',
+    '4967.TW': '十銓',     # 新增：記憶體模組爆發
+    '2449.TW': '京元電子', # 新增：AI封測實質受惠
+    '1514.TW': '亞力',     # 新增：重電綠能落後補漲
+    '2354.TW': '鴻準'      # 新增：鴻海集團散熱機殼轉機
 }
 
 # ---------------------------------------------------
 # 3. 題材掃描池 (Themes) - 早盤動能快篩
 # ---------------------------------------------------
 THEME_POOL = {
-    '2330.TW': ['台積電', 'AI/半導體'], # 20260224新增
+    '2330.TW': ['台積電', 'AI/半導體'], 
     '2317.TW': ['鴻海', 'AI/半導體'],
     '3231.TW': ['緯創', 'AI/半導體'],
     '2454.TW': ['聯發科', 'AI/半導體'],
     '1513.TW': ['中興電', '儲能/重電'],
     '1503.TW': ['士電', '儲能/重電'],
     '1101.TW': ['台泥', '永續/材料'],
-    '2891.TW': ['中信金', '金融'],       # 20260224新增
+    '2891.TW': ['中信金', '金融'],       
     '2881.TW': ['富邦金', '金融'],
-    '2603.TW': ['長榮', '航運'],         # 20260224新增
-    '2618.TW': ['長榮航', '航運'],       # 20260224新增
-    '3714.TW': ['富采', '光電'],         # 20260224新增
-    '2409.TW': ['友達', '光電']          # 20260224新增
+    '2603.TW': ['長榮', '航運'],         
+    '2618.TW': ['長榮航', '航運'],       
+    '3714.TW': ['富采', '光電'],         
+    '2409.TW': ['友達', '光電']          
 }
 
 # --- 核心功能：取得「即時」價格與單一均線 ---
@@ -134,32 +138,4 @@ def main():
                 res = get_full_ma_status(t)
                 if res:
                     curr, ma5, ma10, ma20 = res
-                    msg += f"🔸 {name} ({curr:.2f})\n"
-                    msg += f"   5MA: {ma5:.2f} {'🔺' if curr>=ma5 else '🔻'}\n"
-                    msg += f"   10MA: {ma10:.2f} {'🔺' if curr>=ma10 else '🔻'}\n"
-                    msg += f"   20MA: {ma20:.2f} {'🔺' if curr>=ma20 else '🔻'}\n"
-                    msg += "\n"
-
-        # 3. 題材動能
-        msg += "🔥 [早盤題材動能追蹤]\n"
-        found_strong = False
-        for t, info in THEME_POOL.items():
-            name, category = info
-            res = get_realtime_status(t, 5)
-            if res and res[2] >= 0:
-                found_strong = True
-                msg += f"   {name}: {res[0]:.2f} (領先 {res[2]:.2f})\n"
-        
-        if not found_strong:
-            msg += "   今日題材股動能較弱 (跌破5MA)。"
-
-    send_line_push(token, user_id, msg)
-
-def send_line_push(token, user_id, text):
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    payload = {"to": user_id, "messages": [{"type": "text", "text": text}]}
-    requests.post(url, json=payload, headers=headers)
-
-if __name__ == "__main__":
-    main()
+                    msg += f"🔸 {name} ({curr:.2
