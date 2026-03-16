@@ -8,26 +8,42 @@ from datetime import datetime, timedelta, timezone
 # 1. 持倉清單 (Portfolio) - 監控特定均線
 # ---------------------------------------------------
 MY_PORTFOLIO = {
-    '0050.TW': ['0050', 20],   # 月線防守
-    '00941.TW': ['00941', 20], # 月線防守
-    '2646.TW': ['星宇航空', 20], # 月線防守
-    '2344.TW': ['華邦電', 5]     # 改為 5日線極短線防守
+    '0050.TW': ['0050', 20],   
+    '00941.TW': ['00941', 20], 
+    '2646.TW': ['星宇航空', 20], 
+    '2344.TW': ['華邦電', 5]     
 }
 
 # ---------------------------------------------------
 # 2. 重點觀察池 (Watch List) - 全均線追蹤 (5/10/20MA)
 # ---------------------------------------------------
 WATCH_LIST = {
-    '3481.TW': '群創',     # 伺機尋找下一次突破點
-    '2408.TW': '南亞科',   # 記憶體雙箭頭追蹤
-    '4967.TW': '十銓',     # 記憶體模組高彈性
-    '3374.TWO': '精材',    # 先進封裝
-    '2449.TW': '京元電子', # AI 測試實質受惠
-    '2354.TW': '鴻準'      # 鴻海集團低基期轉機
+    '3481.TW': '群創',     
+    '2408.TW': '南亞科',   
+    '4967.TW': '十銓',     
+    '3374.TWO': '精材',    
+    '2449.TW': '京元電子', 
+    '2354.TW': '鴻準'      
 }
 
 # ---------------------------------------------------
-# 3. 題材掃描池 (Themes) - 早盤動能快篩
+# 3. 參考目標價 (Target Prices) - 計算潛在空間
+# ---------------------------------------------------
+TARGET_PRICES = {
+    '0050.TW': 200.0,
+    '00941.TW': 25.0,
+    '2646.TW': 25.0,
+    '2344.TW': 150.0,  
+    '3481.TW': 32.0,   
+    '2408.TW': 85.0,
+    '4967.TW': 150.0,
+    '3374.TWO': 250.0,
+    '2449.TW': 130.0,
+    '2354.TW': 90.0
+}
+
+# ---------------------------------------------------
+# 4. 題材掃描池 (Themes) - 早盤動能快篩與三線掃描
 # ---------------------------------------------------
 THEME_POOL = {
     '2330.TW': ['台積電', 'AI/半導體'], 
@@ -93,6 +109,7 @@ def main():
     tz_tw = timezone(timedelta(hours=8))
     now = datetime.now(tz_tw)
     
+    # 早上 09:30：維持原本的極短線動能突破快篩
     if now.hour < 12: 
         msg = f"\n🌅 宜駿的早盤題材推薦 ({now.strftime('%m/%d %H:%M')})\n"
         msg += "🎯 標準：強勢站上 5MA (即時)\n━━━━━━━━━━━━━━━\n"
@@ -113,10 +130,12 @@ def main():
         else:
             msg += "目前題材池中尚無標的符合篩選標準。"
     
+    # 下午 13:00：全方位綜合報告 (含目標價與題材三線掃描)
     else: 
         msg = f"\n📊 宜駿的 AGI 綜合報告 ({now.strftime('%H:%M')})\n"
         msg += "━━━━━━━━━━━━━━━\n"
         
+        # 1. 持倉部位追蹤
         msg += "📂 [持倉狀態回報]\n"
         for t, info in MY_PORTFOLIO.items():
             res = get_realtime_status(t, info[1])
@@ -125,9 +144,16 @@ def main():
                 status = "✅ 站上" if diff >= 0 else "⚠️ 跌破"
                 msg += f"【{info[0]}】\n"
                 msg += f" 🔹 現價: {curr:.2f}\n"
+                
+                if t in TARGET_PRICES:
+                    target = TARGET_PRICES[t]
+                    dist = ((target - curr) / curr) * 100
+                    msg += f" 🎯 目標: {target} (距 {dist:.1f}%)\n"
+                    
                 msg += f" 🔹 {info[1]}MA: {ma:.2f}\n"
                 msg += f" 🔹 狀態: {status} ({'+' if diff>=0 else ''}{diff:.2f})\n\n"
         
+        # 2. 重點觀察池 (Watch List)
         if WATCH_LIST:
             msg += "👀 [重點觀察池追蹤]\n"
             for t, name in WATCH_LIST.items():
@@ -135,22 +161,45 @@ def main():
                 if res:
                     curr, ma5, ma10, ma20 = res
                     msg += f"🔸 {name} ({curr:.2f})\n"
+                    
+                    if t in TARGET_PRICES:
+                        target = TARGET_PRICES[t]
+                        dist = ((target - curr) / curr) * 100
+                        msg += f"   🎯 目標: {target} (距 {dist:.1f}%)\n"
+                        
                     msg += f"   5MA: {ma5:.2f} {'🔺' if curr>=ma5 else '🔻'}\n"
                     msg += f"   10MA: {ma10:.2f} {'🔺' if curr>=ma10 else '🔻'}\n"
                     msg += f"   20MA: {ma20:.2f} {'🔺' if curr>=ma20 else '🔻'}\n"
                     msg += "\n"
 
-        msg += "🔥 [早盤題材動能追蹤]\n"
-        found_strong = False
+        # 3. 題材掃描池 - 三線交會狀態分級 (全新農場系統)
+        msg += "🔥 [題材池三線交會掃描]\n"
+        buy_obs = []
+        keep_obs = []
+        leave_obs = []
+        
         for t, info in THEME_POOL.items():
             name, category = info
-            res = get_realtime_status(t, 5)
-            if res and res[2] >= 0:
-                found_strong = True
-                msg += f"   {name}: {res[0]:.2f} (領先 {res[2]:.2f})\n"
+            res = get_full_ma_status(t)
+            if res:
+                curr, ma5, ma10, ma20 = res
+                mas = [ma5, ma10, ma20]
+                spread = (max(mas) - min(mas)) / min(mas) * 100
+                
+                # 判斷邏輯
+                if spread <= 3.0:
+                    buy_obs.append(name)
+                elif spread >= 6.0 and ma5 < ma20 and curr < ma20:
+                    leave_obs.append(name)
+                else:
+                    keep_obs.append(name)
         
-        if not found_strong:
-            msg += "   今日題材股動能較弱 (跌破5MA)。"
+        msg += "🎯 買入觀察期 (三線極度糾結):\n"
+        msg += f"   {', '.join(buy_obs) if buy_obs else '無'}\n\n"
+        msg += "👀 持續觀察中 (保留交會可能):\n"
+        msg += f"   {', '.join(keep_obs) if keep_obs else '無'}\n\n"
+        msg += "🗑️ 離開視野中 (建議優先汰換):\n"
+        msg += f"   {', '.join(leave_obs) if leave_obs else '無'}\n"
 
     send_line_push(token, user_id, msg)
 
