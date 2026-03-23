@@ -5,24 +5,27 @@ import requests
 from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------
-# 1A. 長線左側部位 (Long-Term) - 金字塔建倉邏輯
+# 1A. 長線左側部位 (Long-Term) - 金字塔建倉邏輯 
+# 格式：'代碼': ['名稱', 持有張數]
 # ---------------------------------------------------
 LONG_PORTFOLIO = {
-    '0050.TW': '0050',   
-    '00941.TW': '00941'
+    '0050.TW': ['0050', 2],      # 更新：持有 2 張
+    '00941.TW': ['00941', 2]     # 更新：持有 2 張
 }
 
 # ---------------------------------------------------
 # 1B. 短線右側部位 (Short-Term) - 嚴格均線停損
+# 格式：'代碼': ['名稱', 防守MA, 持有張數]
 # ---------------------------------------------------
 SHORT_PORTFOLIO = {
-    '2344.TW': ['華邦電', 5]
+    # 目前短線空倉，等待下一次狙擊機會
 }
 
 # ---------------------------------------------------
 # 2. 重點觀察池 (Watch List) - 尋找右側突破點
 # ---------------------------------------------------
 WATCH_LIST = {
+    '2344.TW': '華邦電',   # 停損退回觀察池，0持倉
     '3481.TW': '群創',     
     '2408.TW': '南亞科',   
     '2646.TW': '星宇航空', 
@@ -53,17 +56,17 @@ THEME_POOL = {
     '2376.TW': ['技嘉', 'AI/伺服器'],   
     '3017.TW': ['奇鋐', 'AI/散熱'],     
     '5234.TW': ['達興材料', '半導體材料'], 
-    '3491.TWO': ['昇達科', '低軌衛星'],   # 💡 修正：昇達科為上櫃(.TWO)
+    '3491.TWO': ['昇達科', '低軌衛星'],   
     '2313.TW': ['華通', '低軌衛星'],
     '1519.TW': ['華城', '儲能/重電'],    
     '1513.TW': ['中興電', '儲能/重電'], 
     '1503.TW': ['士電', '儲能/重電'],
     '6869.TW': ['雲豹能源', '儲能/綠能'], 
     '9958.TW': ['世紀鋼', '儲能/綠能'], 
+    '2359.TW': ['所羅門', 'AI/機器人'],   
+    '6188.TWO': ['廣明', 'AI/機器人'],    
     '2891.TW': ['中信金', '金融'],       
-    '2881.TW': ['富邦金', '金融'],     
-    '2603.TW': ['長榮', '航運'],         
-    '2618.TW': ['長榮航', '航運']       
+    '2881.TW': ['富邦金', '金融']
 }
 
 # --- 核心功能：短線與即時狀態 ---
@@ -128,12 +131,14 @@ def main():
         msg = f"\n📊 宜駿的 AGI 綜合報告 ({now.strftime('%H:%M')})\n"
         msg += "━━━━━━━━━━━━━━━\n"
         
+        # 1A. 長線金字塔部位
         msg += "🏛️ [長線左側：金字塔建倉區]\n"
-        for t, name in LONG_PORTFOLIO.items():
+        for t, info in LONG_PORTFOLIO.items():
+            name, lots = info[0], info[1]
             res = get_long_term_status(t)
             if res:
                 curr, ma20, ma60, ma120 = res
-                msg += f"【{name}】 現價: {curr:.2f}\n"
+                msg += f"【{name}】({lots}張) 現價: {curr:.2f}\n"
                 
                 if curr > ma20: advice = "🟢 抱緊現有部位，不宜追高加碼"
                 elif curr > ma60: advice = "🟡 溫和回檔 (跌破月線)，可規劃【塔尖10%】試單"
@@ -141,26 +146,30 @@ def main():
                 else: advice = "🔴 長線超跌 (跌破半年線)，啟動【底部40%】大舉佈局"
                     
                 msg += f" 💡 策略: {advice}\n"
-                # 💡 防呆機制：避免 ma60 為 0 導致除以零錯誤
                 if ma60 > 0:
                     msg += f" 📉 距季線({ma60:.2f}): {((curr-ma60)/ma60*100):.1f}%\n\n"
                 else:
                     msg += "\n\n"
 
+        # 1B. 短線動能部位
         msg += "⚔️ [短線右側：嚴格停損區]\n"
-        for t, info in SHORT_PORTFOLIO.items():
-            res = get_realtime_status(t, info[1])
-            if res:
-                curr, ma, diff = res
-                status = "✅ 站上" if diff >= 0 else "⚠️ 跌破請注意"
-                msg += f"【{info[0]}】 現價: {curr:.2f}\n"
-                # 💡 防呆機制：避免 curr 為 0 
-                if t in TARGET_PRICES and curr > 0:
-                    target = TARGET_PRICES[t]
-                    msg += f" 🎯 目標: {target} (距 {((target-curr)/curr*100):.1f}%)\n"
-                msg += f" 🔹 {info[1]}MA 防守: {ma:.2f}\n"
-                msg += f" 🔹 狀態: {status} ({'+' if diff>=0 else ''}{diff:.2f})\n\n"
+        if not SHORT_PORTFOLIO:
+            msg += "   (目前空倉，等待狙擊機會)\n\n"
+        else:
+            for t, info in SHORT_PORTFOLIO.items():
+                name, ma_days, lots = info[0], info[1], info[2]
+                res = get_realtime_status(t, ma_days)
+                if res:
+                    curr, ma, diff = res
+                    status = "✅ 站上" if diff >= 0 else "⚠️ 跌破請注意"
+                    msg += f"【{name}】({lots}張) 現價: {curr:.2f}\n"
+                    if t in TARGET_PRICES and curr > 0:
+                        target = TARGET_PRICES[t]
+                        msg += f" 🎯 目標: {target} (距 {((target-curr)/curr*100):.1f}%)\n"
+                    msg += f" 🔹 {ma_days}MA 防守: {ma:.2f}\n"
+                    msg += f" 🔹 狀態: {status} ({'+' if diff>=0 else ''}{diff:.2f})\n\n"
         
+        # 2. 重點觀察池
         if WATCH_LIST:
             msg += "👀 [重點觀察池追蹤 (右側突破準備)]\n"
             for t, name in WATCH_LIST.items():
@@ -168,12 +177,12 @@ def main():
                 if res:
                     curr, ma5, ma10, ma20 = res
                     msg += f"🔸 {name} ({curr:.2f})\n"
-                    # 💡 防呆機制
                     if t in TARGET_PRICES and curr > 0:
                         msg += f"   🎯 空間: {((TARGET_PRICES[t]-curr)/curr*100):.1f}%\n"
                     msg += f"   5MA: {ma5:.2f}{'🔺'if curr>=ma5 else'🔻'} | 10MA: {ma10:.2f}{'🔺'if curr>=ma10 else'🔻'} | 20MA: {ma20:.2f}{'🔺'if curr>=ma20 else'🔻'}\n"
             msg += "\n"
 
+        # 3. 農場系統
         msg += "🔥 [題材池三線交會掃描]\n"
         buy_obs, keep_obs, leave_obs = [], [], []
         for t, info in THEME_POOL.items():
@@ -181,7 +190,6 @@ def main():
             if res:
                 curr, ma5, ma10, ma20 = res
                 min_ma = min([ma5, ma10, ma20])
-                # 💡 防呆機制：避免均線抓到 0 導致除以零崩潰
                 if min_ma > 0:
                     spread = (max([ma5, ma10, ma20]) - min_ma) / min_ma * 100
                     if spread <= 3.0: buy_obs.append(info[0])
