@@ -6,11 +6,10 @@ from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------
 # 1A. 長線左側部位 (Long-Term) - 金字塔建倉邏輯 
-# 格式：'代碼': ['名稱', 持有張數]
 # ---------------------------------------------------
 LONG_PORTFOLIO = {
-    '0050.TW': ['0050', 2],      # 更新：持有 2 張
-    '00941.TW': ['00941', 2]     # 更新：持有 2 張
+    '0050.TW': ['0050', 2],      
+    '00941.TW': ['00941', 2]     
 }
 
 # ---------------------------------------------------
@@ -18,14 +17,14 @@ LONG_PORTFOLIO = {
 # 格式：'代碼': ['名稱', 防守MA, 持有張數]
 # ---------------------------------------------------
 SHORT_PORTFOLIO = {
-    # 目前短線空倉，等待下一次狙擊機會
+    '1528.TW': ['恩德', 5, 1]    # 新增：機器人題材，5MA極短線防守
 }
 
 # ---------------------------------------------------
 # 2. 重點觀察池 (Watch List) - 尋找右側突破點
 # ---------------------------------------------------
 WATCH_LIST = {
-    '2344.TW': '華邦電',   # 停損退回觀察池，0持倉
+    '2344.TW': '華邦電',   
     '3481.TW': '群創',     
     '2408.TW': '南亞科',   
     '2646.TW': '星宇航空', 
@@ -42,7 +41,7 @@ WATCH_LIST = {
 TARGET_PRICES = {
     '0050.TW': 200.0, '00941.TW': 25.0, '2646.TW': 25.0, '2344.TW': 150.0,  
     '3481.TW': 32.0,  '2408.TW': 85.0,  '4967.TW': 150.0, '3374.TWO': 250.0,
-    '2449.TW': 130.0, '2354.TW': 90.0,  '3037.TW': 220.0  
+    '2449.TW': 130.0, '2354.TW': 90.0,  '3037.TW': 220.0, '1528.TW': 30.0 # 恩德目標價
 }
 
 # ---------------------------------------------------
@@ -65,11 +64,12 @@ THEME_POOL = {
     '9958.TW': ['世紀鋼', '儲能/綠能'], 
     '2359.TW': ['所羅門', 'AI/機器人'],   
     '6188.TWO': ['廣明', 'AI/機器人'],    
+    '1528.TW': ['恩德', 'AI/機器人'],      # 題材池也同步標記
     '2891.TW': ['中信金', '金融'],       
     '2881.TW': ['富邦金', '金融']
 }
 
-# --- 核心功能：短線與即時狀態 ---
+# --- 核心功能模組 (保持不變) ---
 def get_realtime_status(ticker, ma_days):
     try:
         hist_df = yf.download(ticker, period="3mo", interval="1d", progress=False)
@@ -78,8 +78,7 @@ def get_realtime_status(ticker, ma_days):
         ma_value = float(hist_df['Close'].rolling(window=ma_days).mean().iloc[-1])
         curr = float(live_df['Close'].iloc[-1]) if not live_df.empty else float(hist_df['Close'].iloc[-1])
         return curr, ma_value, curr - ma_value
-    except:
-        return None
+    except: return None
 
 def get_full_ma_status(ticker):
     try:
@@ -89,8 +88,7 @@ def get_full_ma_status(ticker):
         close = hist_df['Close']
         curr = float(live_df['Close'].iloc[-1]) if not live_df.empty else float(close.iloc[-1])
         return curr, float(close.rolling(5).mean().iloc[-1]), float(close.rolling(10).mean().iloc[-1]), float(close.rolling(20).mean().iloc[-1])
-    except:
-        return None
+    except: return None
 
 def get_long_term_status(ticker):
     try:
@@ -99,116 +97,69 @@ def get_long_term_status(ticker):
         if hist_df.empty: return None
         close = hist_df['Close']
         curr = float(live_df['Close'].iloc[-1]) if not live_df.empty else float(close.iloc[-1])
-        ma20 = float(close.rolling(20).mean().iloc[-1])
-        ma60 = float(close.rolling(60).mean().iloc[-1])
-        ma120 = float(close.rolling(120).mean().iloc[-1])
+        ma20, ma60, ma120 = float(close.rolling(20).mean().iloc[-1]), float(close.rolling(60).mean().iloc[-1]), float(close.rolling(120).mean().iloc[-1])
         return curr, ma20, ma60, ma120
-    except:
-        return None
+    except: return None
 
 def main():
-    token = os.environ.get('LINE_ACCESS_TOKEN')
-    user_id = os.environ.get('LINE_USER_ID')
-    tz_tw = timezone(timedelta(hours=8))
-    now = datetime.now(tz_tw)
+    token, user_id = os.environ.get('LINE_ACCESS_TOKEN'), os.environ.get('LINE_USER_ID')
+    now = datetime.now(timezone(timedelta(hours=8)))
     
     if now.hour < 12: 
-        msg = f"\n🌅 宜駿的早盤題材推薦 ({now.strftime('%m/%d %H:%M')})\n"
-        msg += "🎯 標準：強勢站上 5MA (即時)\n━━━━━━━━━━━━━━━\n"
-        categorized_results = {}
+        msg = f"\n🌅 宜駿的早盤題材推薦 ({now.strftime('%m/%d %H:%M')})\n🎯 標準：強勢站上 5MA\n━━━━━━━━━━━━━━━\n"
+        categorized = {}
         for t, info in THEME_POOL.items():
-            name, category = info
             res = get_realtime_status(t, 5)
             if res and res[2] >= 0:
-                if category not in categorized_results: categorized_results[category] = []
-                categorized_results[category].append(f"{name} (+{res[2]:.2f})")
-        if categorized_results:
-            for cat, stocks in categorized_results.items(): msg += f"【{cat}】\n   🚀 {', '.join(stocks)}\n"
-        else:
-            msg += "目前題材池中尚無標的符合篩選標準。"
-    
+                if info[1] not in categorized: categorized[info[1]] = []
+                categorized[info[1]].append(f"{info[0]} (+{res[2]:.2f})")
+        if categorized:
+            for cat, stocks in categorized.items(): msg += f"【{cat}】\n   🚀 {', '.join(stocks)}\n"
+        else: msg += "目前題材池中尚無標的符合篩選標準。"
     else: 
-        msg = f"\n📊 宜駿的 AGI 綜合報告 ({now.strftime('%H:%M')})\n"
-        msg += "━━━━━━━━━━━━━━━\n"
-        
-        # 1A. 長線金字塔部位
+        msg = f"\n📊 宜駿的 AGI 綜合報告 ({now.strftime('%H:%M')})\n━━━━━━━━━━━━━━━\n"
         msg += "🏛️ [長線左側：金字塔建倉區]\n"
         for t, info in LONG_PORTFOLIO.items():
-            name, lots = info[0], info[1]
             res = get_long_term_status(t)
             if res:
                 curr, ma20, ma60, ma120 = res
-                msg += f"【{name}】({lots}張) 現價: {curr:.2f}\n"
-                
-                if curr > ma20: advice = "🟢 抱緊現有部位，不宜追高加碼"
-                elif curr > ma60: advice = "🟡 溫和回檔 (跌破月線)，可規劃【塔尖10%】試單"
-                elif curr > ma120: advice = "🟠 價值浮現 (跌破季線)，建議啟動【中段20%】承接"
-                else: advice = "🔴 長線超跌 (跌破半年線)，啟動【底部40%】大舉佈局"
-                    
-                msg += f" 💡 策略: {advice}\n"
-                if ma60 > 0:
-                    msg += f" 📉 距季線({ma60:.2f}): {((curr-ma60)/ma60*100):.1f}%\n\n"
-                else:
-                    msg += "\n\n"
-
-        # 1B. 短線動能部位
+                advice = "🟢 抱緊" if curr > ma20 else ("🟡 塔尖10%" if curr > ma60 else ("🟠 中段20%" if curr > ma120 else "🔴 底部40%"))
+                msg += f"【{info[0]}】({info[1]}張) 現價: {curr:.2f}\n 💡 策略: {advice}\n 📉 距季線: {((curr-ma60)/ma60*100):.1f}%\n\n"
         msg += "⚔️ [短線右側：嚴格停損區]\n"
-        if not SHORT_PORTFOLIO:
-            msg += "   (目前空倉，等待狙擊機會)\n\n"
+        if not SHORT_PORTFOLIO: msg += "   (空倉等待狙擊)\n\n"
         else:
             for t, info in SHORT_PORTFOLIO.items():
-                name, ma_days, lots = info[0], info[1], info[2]
-                res = get_realtime_status(t, ma_days)
+                res = get_realtime_status(t, info[1])
                 if res:
                     curr, ma, diff = res
                     status = "✅ 站上" if diff >= 0 else "⚠️ 跌破請注意"
-                    msg += f"【{name}】({lots}張) 現價: {curr:.2f}\n"
-                    if t in TARGET_PRICES and curr > 0:
-                        target = TARGET_PRICES[t]
-                        msg += f" 🎯 目標: {target} (距 {((target-curr)/curr*100):.1f}%)\n"
-                    msg += f" 🔹 {ma_days}MA 防守: {ma:.2f}\n"
-                    msg += f" 🔹 狀態: {status} ({'+' if diff>=0 else ''}{diff:.2f})\n\n"
-        
-        # 2. 重點觀察池
+                    msg += f"【{info[0]}】({info[2]}張) 現價: {curr:.2f}\n"
+                    if t in TARGET_PRICES: msg += f" 🎯 目標: {TARGET_PRICES[t]} (距 {((TARGET_PRICES[t]-curr)/curr*100):.1f}%)\n"
+                    msg += f" 🔹 {info[1]}MA 防守: {ma:.2f}\n 🔹 狀態: {status} ({'+' if diff>=0 else ''}{diff:.2f})\n\n"
         if WATCH_LIST:
-            msg += "👀 [重點觀察池追蹤 (右側突破準備)]\n"
+            msg += "👀 [重點觀察池追蹤]\n"
             for t, name in WATCH_LIST.items():
                 res = get_full_ma_status(t)
                 if res:
-                    curr, ma5, ma10, ma20 = res
-                    msg += f"🔸 {name} ({curr:.2f})\n"
-                    if t in TARGET_PRICES and curr > 0:
-                        msg += f"   🎯 空間: {((TARGET_PRICES[t]-curr)/curr*100):.1f}%\n"
-                    msg += f"   5MA: {ma5:.2f}{'🔺'if curr>=ma5 else'🔻'} | 10MA: {ma10:.2f}{'🔺'if curr>=ma10 else'🔻'} | 20MA: {ma20:.2f}{'🔺'if curr>=ma20 else'🔻'}\n"
+                    curr, m5, m10, m20 = res
+                    msg += f"🔸 {name} ({curr:.2f})\n   🎯 空間: {((TARGET_PRICES.get(t,0)-curr)/curr*100 if TARGET_PRICES.get(t,0) else 0):.1f}%\n"
+                    msg += f"   5MA: {m5:.2f}{'🔺'if curr>=m5 else'🔻'} | 10MA: {m10:.2f}{'🔺'if curr>=m10 else'🔻'} | 20MA: {m20:.2f}{'🔺'if curr>=m20 else'🔻'}\n"
             msg += "\n"
-
-        # 3. 農場系統
         msg += "🔥 [題材池三線交會掃描]\n"
         buy_obs, keep_obs, leave_obs = [], [], []
         for t, info in THEME_POOL.items():
             res = get_full_ma_status(t)
             if res:
-                curr, ma5, ma10, ma20 = res
-                min_ma = min([ma5, ma10, ma20])
+                curr, m5, m10, m20 = res
+                min_ma = min([m5, m10, m20])
                 if min_ma > 0:
-                    spread = (max([ma5, ma10, ma20]) - min_ma) / min_ma * 100
+                    spread = (max([m5, m10, m20]) - min_ma) / min_ma * 100
                     if spread <= 3.0: buy_obs.append(info[0])
-                    elif spread >= 6.0 and ma5 < ma20 and curr < ma20: leave_obs.append(info[0])
+                    elif spread >= 6.0 and m5 < m20 and curr < m20: leave_obs.append(info[0])
                     else: keep_obs.append(info[0])
-        
-        msg += f"🎯 買入觀察期: {', '.join(buy_obs) if buy_obs else '無'}\n"
-        msg += f"👀 持續觀察中: {', '.join(keep_obs) if keep_obs else '無'}\n"
-        msg += f"🗑️ 離開視野中: {', '.join(leave_obs) if leave_obs else '無'}\n"
+        msg += f"🎯 買入觀察期: {', '.join(buy_obs)}\n👀 持續觀察中: {', '.join(keep_obs)}\n🗑️ 離開視野中: {', '.join(leave_obs)}\n"
 
-    send_line_push(token, user_id, msg)
-
-def send_line_push(token, user_id, text):
-    try:
-        requests.post("https://api.line.me/v2/bot/message/push", 
-                      headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, 
-                      json={"to": user_id, "messages": [{"type": "text", "text": text}]})
-    except:
-        pass
+    requests.post("https://api.line.me/v2/bot/message/push", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={"to": user_id, "messages": [{"type": "text", "text": msg}]})
 
 if __name__ == "__main__":
     main()
