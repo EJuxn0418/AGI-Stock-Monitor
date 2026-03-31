@@ -14,10 +14,9 @@ LONG_PORTFOLIO = {
 
 # ---------------------------------------------------
 # 1B. 短線右側部位 (Short-Term) - 嚴格均線停損
-# 格式：'代碼': ['名稱', 防守MA, 持有張數]
 # ---------------------------------------------------
 SHORT_PORTFOLIO = {
-    '1528.TW': ['恩德', 5, 1]    # 新增：機器人題材，5MA極短線防守
+    '1528.TW': ['恩德', 5, 1]    
 }
 
 # ---------------------------------------------------
@@ -36,12 +35,21 @@ WATCH_LIST = {
 }
 
 # ---------------------------------------------------
-# 3. 參考目標價 (Target Prices)
+# 3. 參考目標價 (Target Prices) - ⚠️ 已校準 2026 真實水位
 # ---------------------------------------------------
 TARGET_PRICES = {
-    '0050.TW': 200.0, '00941.TW': 25.0, '2646.TW': 25.0, '2344.TW': 150.0,  
-    '3481.TW': 32.0,  '2408.TW': 85.0,  '4967.TW': 150.0, '3374.TWO': 250.0,
-    '2449.TW': 130.0, '2354.TW': 90.0,  '3037.TW': 220.0, '1528.TW': 30.0 # 恩德目標價
+    '0050.TW': 82.0,   # 基於近一年高點 81.8 校準
+    '00941.TW': 23.0,  # 基於近一年高點 22.99 校準
+    '2646.TW': 25.0, 
+    '2344.TW': 136.0,  # 前波歷史高點
+    '3481.TW': 32.0,  
+    '2408.TW': 85.0,  
+    '4967.TW': 150.0, 
+    '3374.TWO': 250.0,
+    '2449.TW': 130.0, 
+    '2354.TW': 90.0,  
+    '3037.TW': 220.0, 
+    '1528.TW': 34.0    # 恩德波段歷史高點
 }
 
 # ---------------------------------------------------
@@ -64,12 +72,12 @@ THEME_POOL = {
     '9958.TW': ['世紀鋼', '儲能/綠能'], 
     '2359.TW': ['所羅門', 'AI/機器人'],   
     '6188.TWO': ['廣明', 'AI/機器人'],    
-    '1528.TW': ['恩德', 'AI/機器人'],      # 題材池也同步標記
+    '1528.TW': ['恩德', 'AI/機器人'],      
     '2891.TW': ['中信金', '金融'],       
     '2881.TW': ['富邦金', '金融']
 }
 
-# --- 核心功能模組 (保持不變) ---
+# --- 核心功能模組 ---
 def get_realtime_status(ticker, ma_days):
     try:
         hist_df = yf.download(ticker, period="3mo", interval="1d", progress=False)
@@ -142,7 +150,9 @@ def main():
                 res = get_full_ma_status(t)
                 if res:
                     curr, m5, m10, m20 = res
-                    msg += f"🔸 {name} ({curr:.2f})\n   🎯 空間: {((TARGET_PRICES.get(t,0)-curr)/curr*100 if TARGET_PRICES.get(t,0) else 0):.1f}%\n"
+                    msg += f"🔸 {name} ({curr:.2f})\n"
+                    if t in TARGET_PRICES and curr > 0:
+                        msg += f"   🎯 空間: {((TARGET_PRICES[t]-curr)/curr*100):.1f}%\n"
                     msg += f"   5MA: {m5:.2f}{'🔺'if curr>=m5 else'🔻'} | 10MA: {m10:.2f}{'🔺'if curr>=m10 else'🔻'} | 20MA: {m20:.2f}{'🔺'if curr>=m20 else'🔻'}\n"
             msg += "\n"
         msg += "🔥 [題材池三線交會掃描]\n"
@@ -159,7 +169,10 @@ def main():
                     else: keep_obs.append(info[0])
         msg += f"🎯 買入觀察期: {', '.join(buy_obs)}\n👀 持續觀察中: {', '.join(keep_obs)}\n🗑️ 離開視野中: {', '.join(leave_obs)}\n"
 
-    requests.post("https://api.line.me/v2/bot/message/push", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={"to": user_id, "messages": [{"type": "text", "text": msg}]})
+    try:
+        requests.post("https://api.line.me/v2/bot/message/push", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={"to": user_id, "messages": [{"type": "text", "text": msg}]})
+    except:
+        pass
 
 if __name__ == "__main__":
     main()
