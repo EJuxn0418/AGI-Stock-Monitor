@@ -13,14 +13,15 @@ LONG_PORTFOLIO = {
 }
 
 # ---------------------------------------------------
-# 1B. 短線右側部位 (Short-Term) - 嚴格均線停損
+# 1B. 短線右側部位 (Short-Term) - 分階退場監控
+# 格式：'代碼': ['名稱', 第一道MA, 第二道MA, 持有張數]
 # ---------------------------------------------------
 SHORT_PORTFOLIO = {
-    '1528.TW': ['恩德', 5, 1]    
+    '1528.TW': ['恩德', 5, 10, 2]  # 更新：2張持倉，分開監控 5MA 與 10MA
 }
 
 # ---------------------------------------------------
-# 2. 重點觀察池 (Watch List) - 尋找右側突破點
+# 2. 重點觀察池 (Watch List) 
 # ---------------------------------------------------
 WATCH_LIST = {
     '2344.TW': '華邦電',   
@@ -35,13 +36,13 @@ WATCH_LIST = {
 }
 
 # ---------------------------------------------------
-# 3. 參考目標價 (Target Prices) - ⚠️ 已校準 2026 真實水位
+# 3. 參考目標價 (Target Prices) 
 # ---------------------------------------------------
 TARGET_PRICES = {
-    '0050.TW': 82.0,   # 基於近一年高點 81.8 校準
-    '00941.TW': 23.0,  # 基於近一年高點 22.99 校準
+    '0050.TW': 82.0,   
+    '00941.TW': 23.0,  
     '2646.TW': 25.0, 
-    '2344.TW': 136.0,  # 前波歷史高點
+    '2344.TW': 136.0,  
     '3481.TW': 32.0,  
     '2408.TW': 85.0,  
     '4967.TW': 150.0, 
@@ -49,11 +50,11 @@ TARGET_PRICES = {
     '2449.TW': 130.0, 
     '2354.TW': 90.0,  
     '3037.TW': 220.0, 
-    '1528.TW': 34.0    # 恩德波段歷史高點
+    '1528.TW': 34.0    
 }
 
 # ---------------------------------------------------
-# 4. 題材掃描池 (Themes) - 農場系統
+# 4. 題材掃描池 (Themes)
 # ---------------------------------------------------
 THEME_POOL = {
     '2330.TW': ['台積電', 'AI/半導體'], 
@@ -78,14 +79,15 @@ THEME_POOL = {
 }
 
 # --- 核心功能模組 ---
-def get_realtime_status(ticker, ma_days):
+def get_realtime_status_v5(ticker, ma1_days, ma2_days):
     try:
         hist_df = yf.download(ticker, period="3mo", interval="1d", progress=False)
         live_df = yf.download(ticker, period="1d", interval="1m", progress=False)
         if hist_df.empty: return None
-        ma_value = float(hist_df['Close'].rolling(window=ma_days).mean().iloc[-1])
+        ma1 = float(hist_df['Close'].rolling(window=ma1_days).mean().iloc[-1])
+        ma2 = float(hist_df['Close'].rolling(window=ma2_days).mean().iloc[-1])
         curr = float(live_df['Close'].iloc[-1]) if not live_df.empty else float(hist_df['Close'].iloc[-1])
-        return curr, ma_value, curr - ma_value
+        return curr, ma1, ma2
     except: return None
 
 def get_full_ma_status(ticker):
@@ -117,10 +119,10 @@ def main():
         msg = f"\n🌅 宜駿的早盤題材推薦 ({now.strftime('%m/%d %H:%M')})\n🎯 標準：強勢站上 5MA\n━━━━━━━━━━━━━━━\n"
         categorized = {}
         for t, info in THEME_POOL.items():
-            res = get_realtime_status(t, 5)
-            if res and res[2] >= 0:
+            res = get_full_ma_status(t) # 使用 full_ma 判斷 5MA
+            if res and res[0] >= res[1]:
                 if info[1] not in categorized: categorized[info[1]] = []
-                categorized[info[1]].append(f"{info[0]} (+{res[2]:.2f})")
+                categorized[info[1]].append(f"{info[0]} (+{(res[0]-res[1]):.2f})")
         if categorized:
             for cat, stocks in categorized.items(): msg += f"【{cat}】\n   🚀 {', '.join(stocks)}\n"
         else: msg += "目前題材池中尚無標的符合篩選標準。"
@@ -133,17 +135,23 @@ def main():
                 curr, ma20, ma60, ma120 = res
                 advice = "🟢 抱緊" if curr > ma20 else ("🟡 塔尖10%" if curr > ma60 else ("🟠 中段20%" if curr > ma120 else "🔴 底部40%"))
                 msg += f"【{info[0]}】({info[1]}張) 現價: {curr:.2f}\n 💡 策略: {advice}\n 📉 距季線: {((curr-ma60)/ma60*100):.1f}%\n\n"
-        msg += "⚔️ [短線右側：嚴格停損區]\n"
+        
+        msg += "⚔️ [短線右側：分階退場區]\n"
         if not SHORT_PORTFOLIO: msg += "   (空倉等待狙擊)\n\n"
         else:
             for t, info in SHORT_PORTFOLIO.items():
-                res = get_realtime_status(t, info[1])
+                # 特別處理恩德的分階邏輯
+                res = get_realtime_status_v5(t, info[1], info[2])
                 if res:
-                    curr, ma, diff = res
-                    status = "✅ 站上" if diff >= 0 else "⚠️ 跌破請注意"
-                    msg += f"【{info[0]}】({info[2]}張) 現價: {curr:.2f}\n"
-                    if t in TARGET_PRICES: msg += f" 🎯 目標: {TARGET_PRICES[t]} (距 {((TARGET_PRICES[t]-curr)/curr*100):.1f}%)\n"
-                    msg += f" 🔹 {info[1]}MA 防守: {ma:.2f}\n 🔹 狀態: {status} ({'+' if diff>=0 else ''}{diff:.2f})\n\n"
+                    curr, ma1, ma2 = res
+                    msg += f"【{info[0]}】({info[3]}張) 現價: {curr:.2f}\n"
+                    # 第一道 MA 判斷 (5MA)
+                    status1 = "✅ 守住" if curr >= ma1 else "⚠️ 建議出1張"
+                    msg += f" 🔹 {info[1]}MA: {ma1:.2f} ({status1})\n"
+                    # 第二道 MA 判斷 (10MA)
+                    status2 = "✅ 守住" if curr >= ma2 else "🚫 建議全出"
+                    msg += f" 🔹 {info[2]}MA: {ma2:.2f} ({status2})\n\n"
+        
         if WATCH_LIST:
             msg += "👀 [重點觀察池追蹤]\n"
             for t, name in WATCH_LIST.items():
@@ -155,6 +163,7 @@ def main():
                         msg += f"   🎯 空間: {((TARGET_PRICES[t]-curr)/curr*100):.1f}%\n"
                     msg += f"   5MA: {m5:.2f}{'🔺'if curr>=m5 else'🔻'} | 10MA: {m10:.2f}{'🔺'if curr>=m10 else'🔻'} | 20MA: {m20:.2f}{'🔺'if curr>=m20 else'🔻'}\n"
             msg += "\n"
+        
         msg += "🔥 [題材池三線交會掃描]\n"
         buy_obs, keep_obs, leave_obs = [], [], []
         for t, info in THEME_POOL.items():
@@ -171,8 +180,7 @@ def main():
 
     try:
         requests.post("https://api.line.me/v2/bot/message/push", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={"to": user_id, "messages": [{"type": "text", "text": msg}]})
-    except:
-        pass
+    except: pass
 
 if __name__ == "__main__":
     main()
