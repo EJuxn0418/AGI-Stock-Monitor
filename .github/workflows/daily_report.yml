@@ -3,7 +3,7 @@ name: AGI Stock Monitor
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 4,5 * * 1-5'  # 週一到週五的 12:00 與 13:00 (UTC+8)
+    - cron: '0 4,5 * * 1-5'
 
 jobs:
   run-analysis:
@@ -24,8 +24,13 @@ jobs:
 
       - name: Run script
         env:
-          WEBHOOK_PORTFOLIO: ${{ secrets.WEBHOOK_PORTFOLIO }}
-          WEBHOOK_WATCHLIST: ${{ secrets.WEBHOOK_WATCHLIST }}
-          WEBHOOK_DAILY: ${{ secrets.WEBHOOK_DAILY }}
-          WEBHOOK_LOG: ${{ secrets.WEBHOOK_LOG }}
+          WH_MORNING_REPORT: ${{ secrets.WH_MORNING_REPORT }}
+          WH_AFTERNOON_REPORT: ${{ secrets.WH_AFTERNOON_REPORT }}
+          WH_PORTFOLIO_SUMMARY: ${{ secrets.WH_PORTFOLIO_SUMMARY }}
+          WH_LONG_HOLDING: ${{ secrets.WH_LONG_HOLDING }}
+          WH_SHORT_HOLDING: ${{ secrets.WH_SHORT_HOLDING }}
+          WH_MACRO_WATCH: ${{ secrets.WH_MACRO_WATCH }}
+          WH_KEY_WATCH: ${{ secrets.WH_KEY_WATCH }}
+          WH_SYS_LOG: ${{ secrets.WH_SYS_LOG }}
+          WH_TRADE_LOG: ${{ secrets.WH_TRADE_LOG }}
         run: python main.py
