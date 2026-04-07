@@ -14,10 +14,9 @@ LONG_PORTFOLIO = {
 
 # ---------------------------------------------------
 # 1B. 短線右側部位 (Short-Term) - 分階退場監控
-# 格式：'代碼': ['名稱', 第一道MA, 第二道MA, 持有張數]
 # ---------------------------------------------------
 SHORT_PORTFOLIO = {
-    '1528.TW': ['恩德', 5, 10, 2]  # 更新：2張持倉，分開監控 5MA 與 10MA
+    '1528.TW': ['恩德', 5, 10, 1]  # 剩餘 1 張以 10MA 為終極防線
 }
 
 # ---------------------------------------------------
@@ -111,60 +110,68 @@ def get_long_term_status(ticker):
         return curr, ma20, ma60, ma120
     except: return None
 
+def send_discord_webhook(webhook_url, content):
+    if not webhook_url:
+        print("未設定 Discord Webhook URL")
+        return
+    data = {"content": content}
+    try:
+        requests.post(webhook_url, json=data)
+    except Exception as e:
+        print(f"Discord 發送失敗: {e}")
+
 def main():
-    token, user_id = os.environ.get('LINE_ACCESS_TOKEN'), os.environ.get('LINE_USER_ID')
-    now = datetime.now(timezone(timedelta(hours=8)))
+    webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
+    tz_tw = timezone(timedelta(hours=8))
+    now = datetime.now(tz_tw)
     
     if now.hour < 12: 
-        msg = f"\n🌅 宜駿的早盤題材推薦 ({now.strftime('%m/%d %H:%M')})\n🎯 標準：強勢站上 5MA\n━━━━━━━━━━━━━━━\n"
+        msg = f"**🌅 宜駿的早盤題材推薦 ({now.strftime('%m/%d %H:%M')})**\n> 🎯 標準：強勢站上 5MA\n━━━━━━━━━━━━━━━\n"
         categorized = {}
         for t, info in THEME_POOL.items():
-            res = get_full_ma_status(t) # 使用 full_ma 判斷 5MA
+            res = get_full_ma_status(t) 
             if res and res[0] >= res[1]:
                 if info[1] not in categorized: categorized[info[1]] = []
                 categorized[info[1]].append(f"{info[0]} (+{(res[0]-res[1]):.2f})")
         if categorized:
-            for cat, stocks in categorized.items(): msg += f"【{cat}】\n   🚀 {', '.join(stocks)}\n"
+            for cat, stocks in categorized.items(): msg += f"**【{cat}】**\n   🚀 {', '.join(stocks)}\n"
         else: msg += "目前題材池中尚無標的符合篩選標準。"
     else: 
-        msg = f"\n📊 宜駿的 AGI 綜合報告 ({now.strftime('%H:%M')})\n━━━━━━━━━━━━━━━\n"
-        msg += "🏛️ [長線左側：金字塔建倉區]\n"
+        msg = f"**📊 宜駿的 AGI 綜合報告 ({now.strftime('%H:%M')})**\n━━━━━━━━━━━━━━━\n"
+        msg += "**🏛️ [長線左側：金字塔建倉區]**\n"
         for t, info in LONG_PORTFOLIO.items():
             res = get_long_term_status(t)
             if res:
                 curr, ma20, ma60, ma120 = res
                 advice = "🟢 抱緊" if curr > ma20 else ("🟡 塔尖10%" if curr > ma60 else ("🟠 中段20%" if curr > ma120 else "🔴 底部40%"))
-                msg += f"【{info[0]}】({info[1]}張) 現價: {curr:.2f}\n 💡 策略: {advice}\n 📉 距季線: {((curr-ma60)/ma60*100):.1f}%\n\n"
+                msg += f"**【{info[0]}】** ({info[1]}張) 現價: `{curr:.2f}`\n 💡 策略: {advice}\n 📉 距季線: {((curr-ma60)/ma60*100):.1f}%\n\n"
         
-        msg += "⚔️ [短線右側：分階退場區]\n"
+        msg += "**⚔️ [短線右側：分階退場區]**\n"
         if not SHORT_PORTFOLIO: msg += "   (空倉等待狙擊)\n\n"
         else:
             for t, info in SHORT_PORTFOLIO.items():
-                # 特別處理恩德的分階邏輯
                 res = get_realtime_status_v5(t, info[1], info[2])
                 if res:
                     curr, ma1, ma2 = res
-                    msg += f"【{info[0]}】({info[3]}張) 現價: {curr:.2f}\n"
-                    # 第一道 MA 判斷 (5MA)
+                    msg += f"**【{info[0]}】** ({info[3]}張) 現價: `{curr:.2f}`\n"
                     status1 = "✅ 守住" if curr >= ma1 else "⚠️ 建議出1張"
                     msg += f" 🔹 {info[1]}MA: {ma1:.2f} ({status1})\n"
-                    # 第二道 MA 判斷 (10MA)
                     status2 = "✅ 守住" if curr >= ma2 else "🚫 建議全出"
                     msg += f" 🔹 {info[2]}MA: {ma2:.2f} ({status2})\n\n"
         
         if WATCH_LIST:
-            msg += "👀 [重點觀察池追蹤]\n"
+            msg += "**👀 [重點觀察池追蹤]**\n"
             for t, name in WATCH_LIST.items():
                 res = get_full_ma_status(t)
                 if res:
                     curr, m5, m10, m20 = res
-                    msg += f"🔸 {name} ({curr:.2f})\n"
+                    msg += f"🔸 {name} (`{curr:.2f}`)\n"
                     if t in TARGET_PRICES and curr > 0:
                         msg += f"   🎯 空間: {((TARGET_PRICES[t]-curr)/curr*100):.1f}%\n"
                     msg += f"   5MA: {m5:.2f}{'🔺'if curr>=m5 else'🔻'} | 10MA: {m10:.2f}{'🔺'if curr>=m10 else'🔻'} | 20MA: {m20:.2f}{'🔺'if curr>=m20 else'🔻'}\n"
             msg += "\n"
         
-        msg += "🔥 [題材池三線交會掃描]\n"
+        msg += "**🔥 [題材池三線交會掃描]**\n"
         buy_obs, keep_obs, leave_obs = [], [], []
         for t, info in THEME_POOL.items():
             res = get_full_ma_status(t)
@@ -178,9 +185,7 @@ def main():
                     else: keep_obs.append(info[0])
         msg += f"🎯 買入觀察期: {', '.join(buy_obs)}\n👀 持續觀察中: {', '.join(keep_obs)}\n🗑️ 離開視野中: {', '.join(leave_obs)}\n"
 
-    try:
-        requests.post("https://api.line.me/v2/bot/message/push", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={"to": user_id, "messages": [{"type": "text", "text": msg}]})
-    except: pass
+    send_discord_webhook(webhook_url, msg)
 
 if __name__ == "__main__":
     main()
