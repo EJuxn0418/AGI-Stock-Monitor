@@ -22,7 +22,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install yfinance pandas requests
 
-      - name: Run script
+     - name: Run script
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          WEBHOOK_PORTFOLIO: ${{ secrets.WEBHOOK_PORTFOLIO }}
+          WEBHOOK_WATCHLIST: ${{ secrets.WEBHOOK_WATCHLIST }}
+          WEBHOOK_DAILY: ${{ secrets.WEBHOOK_DAILY }}
+          WEBHOOK_LOG: ${{ secrets.WEBHOOK_LOG }}
         run: python main.py
