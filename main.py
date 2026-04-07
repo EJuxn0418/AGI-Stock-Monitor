@@ -10,9 +10,14 @@ from datetime import datetime, timedelta, timezone
 # ---------------------------------------------------
 LONG_PORTFOLIO = {'0050.TW': ['0050', 2], '00941.TW': ['00941', 2]}
 SHORT_PORTFOLIO = {'1528.TW': ['恩德', 5, 10, 1]}
-WATCH_LIST = {'2344.TW': '華邦電', '3481.TW': '群創', '2408.TW': '南亞科'}
-THEME_POOL = {'2313.TW': ['華通', '低軌衛星'], '1528.TW': ['恩德', 'AI/機器人']}
+WATCH_LIST = {'2344.TW': '華邦電', '3481.TW': '群創', '2408.TW': '南亞科', '2646.TW': '星宇航空', '3374.TWO': '精材', '3037.TW': '欣興'}
+THEME_POOL = {
+    '2330.TW': ['台積電', 'AI/半導體'], '2317.TW': ['鴻海', 'AI/半導體'],
+    '3491.TWO': ['昇達科', '低軌衛星'], '2313.TW': ['華通', '低軌衛星'],
+    '2359.TW': ['所羅門', 'AI/機器人'], '1528.TW': ['恩德', 'AI/機器人']
+}
 
+# --- 工具模組 ---
 def get_stock_data(ticker, days=60):
     try:
         hist = yf.download(ticker, period=f"{days}d", interval="1d", progress=False)
@@ -51,45 +56,85 @@ def send_embed(webhook_url, title, fields, color=0x2ecc71, desc=""):
     requests.post(webhook_url, json=payload)
 
 def main():
-    wh = {k: os.environ.get(k) for k in ['WH_MORNING_REPORT', 'WH_AFTERNOON_REPORT', 'WH_PORTFOLIO_SUMMARY', 'WH_LONG_HOLDING', 'WH_SHORT_HOLDING', 'WH_MACRO_WATCH', 'WH_KEY_WATCH', 'WH_SYS_LOG', 'WH_TRADE_LOG', 'WH_SPF_REPORT']}
-    now = datetime.now(timezone(timedelta(hours=8)))
+    # 讀取所有的 Webhook 鑰匙
+    wh = {k: os.environ.get(k) for k in [
+        'WH_MORNING_REPORT', 'WH_AFTERNOON_REPORT', 'WH_PORTFOLIO_SUMMARY', 
+        'WH_LONG_HOLDING', 'WH_SHORT_HOLDING', 'WH_MACRO_WATCH', 
+        'WH_KEY_WATCH', 'WH_SYS_LOG', 'WH_TRADE_LOG', 'WH_SPF_REPORT'
+    ]}
     
-    # 1. 早盤 (09:30)
-    if now.hour == 9:
-        fields = []
+    now = datetime.now(timezone(timedelta(hours=8)))
+    is_test_mode = now.hour >= 20  # 晚上 8 點以後手動觸發，啟動全頻道測試
+    
+    # ---------------------------------------------------
+    # 1. 早盤區塊 (09:30 或 測試模式)
+    # ---------------------------------------------------
+    if now.hour == 9 or is_test_mode:
+        m_fields = []
         for t, info in THEME_POOL.items():
             d = get_stock_data(t)
-            if d and d['price'] >= d['m5']: fields.append({"name": f"🚀 {info[1]} | {info[0]}", "value": f"現價: `{d['price']:.2f}`", "inline": True})
-        send_embed(wh['WH_MORNING_REPORT'], "🌅 今日強勢題材掃描", fields, 0x3498db)
+            if d and d['price'] >= d['m5']: 
+                m_fields.append({"name": f"🚀 {info[1]} | {info[0]}", "value": f"現價: `{d['price']:.2f}`", "inline": True})
+        if not m_fields: m_fields.append({"name": "狀態", "value": "今日無標的站上 5MA"})
+        send_embed(wh['WH_MORNING_REPORT'], "🌅 早盤強勢題材掃描", m_fields, 0x3498db)
 
-    # 2. 午盤 (13:00) 或是 測試模式 (晚上 20:00 以後手動執行時)
-    if (12 <= now.hour <= 14) or (now.hour >= 20): 
+    # ---------------------------------------------------
+    # 2. 午盤/持倉區塊 (13:00 或 測試模式)
+    # ---------------------------------------------------
+    if (12 <= now.hour <= 14) or is_test_mode:
+        # 長線持倉
         l_fields = []
         for t, info in LONG_PORTFOLIO.items():
             d = get_stock_data(t, 120)
-            if d: l_fields.append({"name": f"🏛️ {info[0]}", "value": f"價: `{d['price']:.2f}`\n月: {d['m20']:.2f} | 季: {d['m60']:.2f}", "inline": True})
-        send_embed(wh['WH_LONG_HOLDING'], "🏢 長線部位狀態", l_fields, 0x27ae60)
+            if d: 
+                adv = "🟢 安全" if d['price'] > d['m20'] else "🟡 月線防禦"
+                l_fields.append({"name": f"🏛️ {info[0]} ({info[1]}張)", "value": f"價: `{d['price']:.2f}`\n月: {d['m20']:.2f} | 季: {d['m60']:.2f}\n{adv}", "inline": True})
+        send_embed(wh['WH_LONG_HOLDING'], "🏢 長線左側部位狀態", l_fields, 0x27ae60)
 
+        # 短線持倉
         s_fields = []
+        s_color = 0x2ecc71
         for t, info in SHORT_PORTFOLIO.items():
             d = get_stock_data(t)
-            if d: s_fields.append({"name": f"⚔️ {info[0]}", "value": f"價: `{d['price']:.2f}`\n5M: {d['m5']:.2f} | 10M: {d['m10']:.2f}", "inline": True})
-        send_embed(wh['WH_SHORT_HOLDING'], "⚡ 短線部位狀態", s_fields, 0xf1c40f)
+            if d:
+                st = "✅ 站穩" if d['price'] >= d['m5'] else ("⚠️ 破5MA" if d['price'] >= d['m10'] else "🚫 破10MA")
+                if d['price'] < d['m5']: s_color = 0xf1c40f
+                if d['price'] < d['m10']: s_color = 0xe74c3c
+                s_fields.append({"name": f"⚔️ {info[0]} ({info[3]}張)", "value": f"價: `{d['price']:.2f}`\n5M: {d['m5']:.2f} | 10M: {d['m10']:.2f}\n{st}", "inline": True})
+        send_embed(wh['WH_SHORT_HOLDING'], "⚡ 短線右側部位狀態", s_fields, s_color)
 
+        # 總表 與 午盤報告
+        send_embed(wh['WH_PORTFOLIO_SUMMARY'], "📊 當前持倉彙整總表", l_fields + s_fields, 0x34495e)
+        send_embed(wh['WH_AFTERNOON_REPORT'], "📋 午盤重點簡報", l_fields + s_fields, s_color)
+
+        # 重點觀察池
         k_fields = []
         for t, name in WATCH_LIST.items():
             d = get_stock_data(t)
-            if d: k_fields.append({"name": f"🔸 {name}", "value": f"`{d['price']:.2f}`", "inline": True})
+            if d: k_fields.append({"name": f"🔸 {name}", "value": f"`{d['price']:.2f}` (5MA: {d['m5']:.2f})", "inline": True})
         send_embed(wh['WH_KEY_WATCH'], "👀 重點觀察池追蹤", k_fields, 0xe67e22)
 
-        send_embed(wh['WH_AFTERNOON_REPORT'], "📊 測試/午盤 綜合簡報", l_fields + s_fields, 0x34495e)
+        # 宏觀觀察池 (補回)
+        mac_fields = []
+        for t, info in THEME_POOL.items():
+            d = get_stock_data(t)
+            if d: mac_fields.append({"name": f"🌐 {info[0]}", "value": f"`{d['price']:.2f}`", "inline": True})
+        send_embed(wh['WH_MACRO_WATCH'], "🌍 宏觀題材池快訊", mac_fields, 0x1abc9c)
 
-    # 3. 永豐報告 (15:00 以後)
-    if now.hour >= 15:
+        # 操作留痕 (補回)
+        log_fields = [{"name": "最新變動", "value": "1528 恩德 今日減持 1 張 (剩 1 張)"}]
+        send_embed(wh['WH_TRADE_LOG'], "✍️ 系統操作留痕", log_fields, 0x7f8c8d)
+
+    # ---------------------------------------------------
+    # 3. 永豐期貨盤後 (15:00 以後 或 測試模式)
+    # ---------------------------------------------------
+    if now.hour >= 15 or is_test_mode:
         spf = get_spf_reports()
-        send_embed(wh['WH_SPF_REPORT'], "📉 永豐期貨盤後報告", spf, 0x9b59b6)
+        if spf:
+            send_embed(wh['WH_SPF_REPORT'], "📉 永豐期貨盤後報告", spf, 0x9b59b6)
 
-    send_embed(wh['WH_SYS_LOG'], "⚙️ 系統日誌", [{"name": "執行時間", "value": f"{now.strftime('%H:%M:%S')}"}], 0x95a5a6)
+    # 系統日誌
+    send_embed(wh['WH_SYS_LOG'], "⚙️ 系統日誌", [{"name": "執行狀態", "value": f"完成時間: {now.strftime('%H:%M:%S')}\n模式: {'全局測試模式' if is_test_mode else '例行排程'}"}], 0x95a5a6)
 
 if __name__ == "__main__":
     main()
