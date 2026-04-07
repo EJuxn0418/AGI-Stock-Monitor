@@ -5,10 +5,10 @@ import requests
 from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------
-# 1. 核心數據配置 (保持最新操作紀錄)
+# 1. 核心數據配置 
 # ---------------------------------------------------
 LONG_PORTFOLIO = {'0050.TW': ['0050', 2], '00941.TW': ['00941', 2]}
-SHORT_PORTFOLIO = {'1528.TW': ['恩德', 5, 10, 1]} # 今日減持 1，剩 1
+SHORT_PORTFOLIO = {'1528.TW': ['恩德', 5, 10, 1]} # 剩 1 張
 WATCH_LIST = {
     '2344.TW': '華邦電', '3481.TW': '群創', '2408.TW': '南亞科', 
     '2646.TW': '星宇航空', '3374.TWO': '精材', '3037.TW': '欣興'
@@ -71,16 +71,16 @@ def main():
 
     # --- 午盤：12:00 以後執行 ---
     else:
-        # 1. 持倉分流：長線持倉
+        # 1. 持倉分流：長線持倉 (新增 20MA 月線顯示，排版更換行)
         long_fields = []
         for t, info in LONG_PORTFOLIO.items():
             data = get_stock_data(t, 120)
             if data:
-                advice = "🟢 安全" if data['price'] > data['m20'] else "🟡 季線防護"
-                long_fields.append({"name": f"🏛️ {info[0]} ({info[1]}張)", "value": f"價: `{data['price']:.2f}` | 季線: {data['m60']:.2f}\n策略: {advice}", "inline": True})
+                advice = "🟢 安全" if data['price'] > data['m20'] else "🟡 月線攻防"
+                long_fields.append({"name": f"🏛️ {info[0]} ({info[1]}張)", "value": f"現價: `{data['price']:.2f}`\n月線: {data['m20']:.2f} | 季線: {data['m60']:.2f}\n策略: **{advice}**", "inline": True})
         send_embed(wh['WH_LONG_HOLDING'], "🏢 長線左側部位狀態", long_fields, 0x27ae60)
 
-        # 2. 持倉分流：短線持倉
+        # 2. 持倉分流：短線持倉 (補回 5MA 與 10MA 雙防線顯示)
         short_fields = []
         status_color = 0x2ecc71
         for t, info in SHORT_PORTFOLIO.items():
@@ -89,7 +89,7 @@ def main():
                 status = "✅ 站穩" if data['price'] >= data['m5'] else ("⚠️ 警訊(破5MA)" if data['price'] >= data['m10'] else "🚫 撤退(破10MA)")
                 if data['price'] < data['m5']: status_color = 0xf1c40f
                 if data['price'] < data['m10']: status_color = 0xe74c3c
-                short_fields.append({"name": f"⚔️ {info[0]} ({info[3]}張)", "value": f"價: `{data['price']:.2f}` | 5MA: {data['m5']:.2f}\n狀態: **{status}**", "inline": True})
+                short_fields.append({"name": f"⚔️ {info[0]} ({info[3]}張)", "value": f"現價: `{data['price']:.2f}`\n5MA: {data['m5']:.2f} | 10MA: {data['m10']:.2f}\n狀態: **{status}**", "inline": True})
         send_embed(wh['WH_SHORT_HOLDING'], "⚡ 短線右側部位狀態", short_fields, status_color)
 
         # 3. 持倉總表 (匯總資訊)
@@ -102,16 +102,16 @@ def main():
         key_fields = []
         for t, name in WATCH_LIST.items():
             data = get_stock_data(t)
-            if data: key_fields.append({"name": f"🔸 {name}", "value": f"`{data['price']:.2f}` (5MA: {data['m5']:.2f})", "inline": True})
+            if data: key_fields.append({"name": f"🔸 {name}", "value": f"現價: `{data['price']:.2f}`\n5MA: {data['m5']:.2f}", "inline": True})
         send_embed(wh['WH_KEY_WATCH'], "👀 重點觀察池追蹤", key_fields, 0xe67e22)
 
         macro_fields = []
         for t, info in THEME_POOL.items():
             data = get_stock_data(t)
-            if data: macro_fields.append({"name": f"🌐 {info[0]} {info[1]}", "value": f"`{data['price']:.2f}`", "inline": True})
+            if data: macro_fields.append({"name": f"🌐 {info[0]} {info[1]}", "value": f"現價: `{data['price']:.2f}`", "inline": True})
         send_embed(wh['WH_MACRO_WATCH'], "🌍 宏觀題材池快訊", macro_fields, 0x1abc9c)
 
-        # 6. 操作留痕 (記錄今日持倉變化)
+        # 6. 操作留痕
         send_embed(wh['WH_TRADE_LOG'], "✍️ 系統操作留痕", [{"name": "持倉變動", "value": "1528 恩德 今日減持 1 張 (剩 1 張)"}], 0x7f8c8d)
 
         send_embed(wh['WH_SYS_LOG'], "⚙️ 系統日誌", [{"name": "狀態", "value": "午盤綜合報告發送完成"}], 0x95a5a6)
