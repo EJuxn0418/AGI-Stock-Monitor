@@ -76,31 +76,33 @@ def send_embed(webhook_url, title, fields, color=0x2ecc71, desc=""):
 def main():
     wh = {k: os.environ.get(k) for k in ['WH_MORNING_REPORT', 'WH_AFTERNOON_REPORT', 'WH_PORTFOLIO_SUMMARY', 'WH_LONG_HOLDING', 'WH_SHORT_HOLDING', 'WH_MACRO_WATCH', 'WH_KEY_WATCH', 'WH_SYS_LOG', 'WH_TRADE_LOG', 'WH_SPF_REPORT']}
     now = datetime.now(timezone(timedelta(hours=8)))
+    
+    # 絕對時間閘門 (Strict Time-Gating)
     is_test_mode = now.hour >= 20  
+    is_morning = 9 <= now.hour < 12      # 09:00 - 11:59
+    is_noon = 12 <= now.hour < 15        # 12:00 - 14:59
+    is_afternoon = 15 <= now.hour < 20   # 15:00 - 19:59
 
-    # 1. 早盤掃描
-    if now.hour == 9 or is_test_mode:
+    action_record = []
+
+    # ==========================================
+    # 區塊 1: 早盤 (09:30 觸發)
+    # ==========================================
+    if is_morning or is_test_mode:
         m_fields = []
         for t, info in THEME_POOL.items():
             d = get_stock_data(t)
             strat = check_strategy(d)
             if strat and strat['is_breakout']:
                 m_fields.append({"name": f"🔥 壓縮突破 | {info[0]} ({info[1]})", "value": f"現價: `{d['price']:.2f}`\n壓縮率: `{strat['ratio']:.1f}%`", "inline": True})
-        desc = "系統偵測昨日均線高度糾結，今日開盤半小時內帶量站上 5MA 之強勢股："
+        desc = "系統偵測昨日均線高度糾結，今日開盤帶量站上 5MA 之強勢股："
         send_embed(wh['WH_MORNING_REPORT'], "🌅 早盤策略雷達：起漲點掃描", m_fields if m_fields else [{"name":"狀態","value":"今日尚無標的符合壓縮突破條件"}], 0x3498db, desc)
+        action_record.append("發送早盤策略雷達")
 
-    # 2. 午盤總結 (12:00 ~ 16:00)
-    if (12 <= now.hour <= 16) or is_test_mode:
-        
-        # 宏觀觀察池
-        mac_fields = []
-        for t, info in THEME_POOL.items():
-            d = get_stock_data(t)
-            strat = check_strategy(d)
-            if strat and strat['is_compressed']:
-                mac_fields.append({"name": f"🌐 {info[1]} | {info[0]}", "value": f"現價: `{d['price']:.2f}`\n壓縮率: `{strat['ratio']:.1f}%` (糾結中)", "inline": True})
-        send_embed(wh['WH_MACRO_WATCH'], "🌍 宏觀題材池：盤後壓縮掃描", mac_fields if mac_fields else [{"name":"狀態","value":"目前題材池標的均線尚無高度壓縮型態"}], 0x1abc9c, "三線糾結標的代表籌碼沉澱，隨時可能表態突破。")
-
+    # ==========================================
+    # 區塊 2: 午盤 (13:00 觸發)
+    # ==========================================
+    if is_noon or is_test_mode:
         # 長線持倉
         l_fields = []
         for t, info in LONG_PORTFOLIO.items():
@@ -125,27 +127,53 @@ def main():
                 s_fields.append({"name": f"⚔️ {info[0]} ({info[3]}張)", "value": f"價: `{d['price']:.2f}`{roi_str}\n均線: {info[1]}MA | 狀態: {st}", "inline": True})
         send_embed(wh['WH_SHORT_HOLDING'], "⚡ 短線右側部位狀態", s_fields, s_color)
 
-        # 🚨 [修復區] 遺失的四個頻道全數接回 🚨
+        # 總表 與 午盤日報
         send_embed(wh['WH_PORTFOLIO_SUMMARY'], "📊 當前持倉彙整總表", l_fields + s_fields, 0x34495e)
         send_embed(wh['WH_AFTERNOON_REPORT'], "📋 午盤重點簡報", l_fields + s_fields, s_color)
 
+        # 重點觀察池
         k_fields = []
         for t, name in WATCH_LIST.items():
             d = get_stock_data(t)
             if d: k_fields.append({"name": f"🔸 {name}", "value": f"`{d['price']:.2f}`", "inline": True})
         if k_fields: 
             send_embed(wh['WH_KEY_WATCH'], "👀 重點觀察池追蹤", k_fields, 0xe67e22)
+            
+        action_record.append("發送午盤總表與持倉狀態")
 
-        log_fields = [{"name": "系統修復", "value": "v7.2 已修復午盤綜合報告與總表丟失問題。"}]
-        send_embed(wh['WH_TRADE_LOG'], "✍️ 系統操作留痕", log_fields, 0x7f8c8d)
+    # ==========================================
+    # 區塊 3: 盤後結算 (15:00 觸發)
+    # ==========================================
+    if is_afternoon or is_test_mode:
+        # 宏觀觀察池 (移至 15:00 區間)
+        mac_fields = []
+        for t, info in THEME_POOL.items():
+            d = get_stock_data(t)
+            strat = check_strategy(d)
+            if strat and strat['is_compressed']:
+                mac_fields.append({"name": f"🌐 {info[1]} | {info[0]}", "value": f"現價: `{d['price']:.2f}`\n壓縮率: `{strat['ratio']:.1f}%` (糾結中)", "inline": True})
+        send_embed(wh['WH_MACRO_WATCH'], "🌍 宏觀題材池：盤後壓縮掃描", mac_fields if mac_fields else [{"name":"狀態","value":"目前題材池標的均線尚無高度壓縮型態"}], 0x1abc9c, "三線糾結標的代表籌碼沉澱，隨時可能表態突破。")
 
-    # 3. 永豐報告
-    if now.hour >= 15 or is_test_mode:
+        # 永豐期貨報告
         spf = get_spf_reports()
         if spf: send_embed(wh['WH_SPF_REPORT'], "📉 永豐期貨盤後報告", spf, 0x9b59b6)
+        
+        action_record.append("發送盤後宏觀壓縮與期貨報告")
 
-    # 4. 系統日誌
-    send_embed(wh['WH_SYS_LOG'], "⚙️ 系統日誌", [{"name": "執行時間", "value": f"{now.strftime('%H:%M:%S')}"}], 0x95a5a6)
+    # ==========================================
+    # 區塊 4: 每次執行必觸發 (日誌與留痕)
+    # ==========================================
+    if action_record or is_test_mode:
+        mode_str = "全局測試模式" if is_test_mode else "排程觸發"
+        log_fields = [
+            {"name": "系統修復與優化", "value": "v7.3 導入嚴格時間閘門，解決午盤日報延遲誤發問題。"},
+            {"name": "本次執行任務", "value": "\n".join(action_record) if action_record else "無具體任務"}
+        ]
+        send_embed(wh['WH_TRADE_LOG'], "✍️ 系統操作留痕", log_fields, 0x7f8c8d)
+        
+        sys_status = [{"name": "啟動時間", "value": f"{now.strftime('%Y/%m/%d %H:%M:%S')}"},
+                      {"name": "運行模式", "value": mode_str}]
+        send_embed(wh['WH_SYS_LOG'], "⚙️ 系統日誌", sys_status, 0x95a5a6)
 
 if __name__ == "__main__":
     main()
