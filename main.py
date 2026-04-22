@@ -6,11 +6,10 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------
-# 核心數據配置
+# 核心數據配置 (v7.4 倉位更新：移除恩德)
 # ---------------------------------------------------
 LONG_PORTFOLIO = {'0050.TW': ['0050', 2, 70.25], '00941.TW': ['00941', 2, 16.74]}
 SHORT_PORTFOLIO = {
-    '1528.TW': ['恩德', 5, 10, 1, 26.90],
     '3481.TW': ['群創', 10, 20, 1, 25.95]
 }
 
@@ -24,7 +23,7 @@ THEME_POOL = {
     '2382.TW': ['廣達', 'AI伺服器'], '3231.TW': ['緯創', 'AI伺服器']
 }
 
-WATCH_LIST = {'2344.TW': '華邦電', '2408.TW': '南亞科', '2646.TW': '星宇', '2436.TW': '偉詮電'}
+WATCH_LIST = {'2344.TW': '華邦電', '2408.TW': '南亞科', '2646.TW': '星宇','1528.TW':'恩德'}
 
 # --- 功能模組 ---
 def check_strategy(data):
@@ -125,6 +124,8 @@ def main():
                 if d['price'] < d[f'm{info[1]}']: s_color = 0xf1c40f
                 if d['price'] < d[f'm{info[2]}']: s_color = 0xe74c3c
                 s_fields.append({"name": f"⚔️ {info[0]} ({info[3]}張)", "value": f"價: `{d['price']:.2f}`{roi_str}\n均線: {info[1]}MA | 狀態: {st}", "inline": True})
+        if not s_fields:
+            s_fields.append({"name": "狀態", "value": "目前無短線持倉部位", "inline": True})
         send_embed(wh['WH_SHORT_HOLDING'], "⚡ 短線右側部位狀態", s_fields, s_color)
 
         # 總表 與 午盤日報
@@ -145,7 +146,7 @@ def main():
     # 區塊 3: 盤後結算 (15:00 觸發)
     # ==========================================
     if is_afternoon or is_test_mode:
-        # 宏觀觀察池 (移至 15:00 區間)
+        # 宏觀觀察池
         mac_fields = []
         for t, info in THEME_POOL.items():
             d = get_stock_data(t)
@@ -166,7 +167,7 @@ def main():
     if action_record or is_test_mode:
         mode_str = "全局測試模式" if is_test_mode else "排程觸發"
         log_fields = [
-            {"name": "系統修復與優化", "value": "v7.3 導入嚴格時間閘門，解決午盤日報延遲誤發問題。"},
+            {"name": "系統操作", "value": "恩德 (1528) 已於 28.75 賣出，移出短線持倉監控。"},
             {"name": "本次執行任務", "value": "\n".join(action_record) if action_record else "無具體任務"}
         ]
         send_embed(wh['WH_TRADE_LOG'], "✍️ 系統操作留痕", log_fields, 0x7f8c8d)
