@@ -6,31 +6,39 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------
-# 核心數據配置 (v7.6 新增高階玻纖布板塊)
+# 核心數據配置 (v7.8 Computex 戰備版)
 # ---------------------------------------------------
-LONG_PORTFOLIO = { '00941.TW': ['00941', 2, 16.74]}
-SHORT_PORTFOLIO = {}
+# 目前幾乎為空手狀態，嚴格守護現金部位
+LONG_PORTFOLIO = {'00941.TW': ['00941', 2, 16.74]} 
+SHORT_PORTFOLIO = {} 
+
+# 迎戰 6 月 Computex 的核心規格升級板塊
 THEME_POOL = {
     '2330.TW': ['台積電', 'AI/半導體'], 
-    '2454.TW': ['聯發科', 'AI/半導體'],
+    '2382.TW': ['廣達', 'AI伺服器'], 
     '3711.TW': ['日月光', '先進封裝'], 
     '3131.TWO': ['弘塑', '封測設備'],
-    '2382.TW': ['廣達', 'AI伺服器'], 
-    '3231.TW': ['緯創', 'AI伺服器'],
-    '2408.TW': ['南亞科', '記憶體'], 
-    '8299.TWO': ['群聯', '記憶體'],
+    '3450.TW': ['聯鈞', 'CPO矽光子'],    # 🌟 新增：光通訊/矽光子指標
+    '3363.TW': ['上詮', 'CPO矽光子'],    # 🌟 新增：光通訊/矽光子指標
+    '2308.TW': ['台達電', 'AI電源/散熱'], # 🌟 新增：電源與散熱龍頭，兼具防禦屬性
+    '3324.TW': ['雙鴻', '伺服器水冷'], 
     '3491.TWO': ['昇達科', '低軌衛星'], 
     '6285.TW': ['啟碁', '低軌衛星'],
-    '3324.TW': ['雙鴻', '伺服器散熱'], 
-    '2368.TW': ['金像電', '伺服器PCB'],
     '1815.TW': ['富喬', '高階玻纖布'], 
     '5340.TWO': ['建榮', '高階玻纖布']
 }
 
+# 觀察池：作為大盤溫度計與潛在遞補名單
 WATCH_LIST = {
-    '2344.TW': '華邦電', '2408.TW': '南亞科', 
-    '2646.TW': '星宇', '1528.TW':'恩德',
-    '3037.TW': '欣興', '3481.TW':'群創',
+    '0050.TW': '元大台灣50 (大盤指標)', 
+    '2317.TW': '鴻海 (組裝動能)', 
+    '2454.TW': '聯發科 (邊緣AI)', 
+    '2344.TW': '華邦電', 
+    '2408.TW': '南亞科', 
+    '2646.TW': '星宇', 
+    '1528.TW':'恩德', 
+    '3037.TW': '欣興', 
+    '3481.TW':'群創', 
     '0050.TW': '台灣50'
 }
 
@@ -94,7 +102,7 @@ def main():
     action_record = []
 
     # ==========================================
-    # 區塊 1: 早盤雷達 (09:30 觸發)
+    # 早盤雷達 (09:30 觸發)
     # ==========================================
     if is_morning or is_test_mode:
         m_fields = []
@@ -103,52 +111,34 @@ def main():
             strat = check_strategy(d)
             if strat and strat['is_breakout']:
                 m_fields.append({"name": f"🔥 壓縮突破 | {info[0]} ({info[1]})", "value": f"現價: `{d['price']:.2f}`\n壓縮率: `{strat['ratio']:.1f}%`", "inline": True})
-        desc = "系統偵測昨日均線高度糾結，今日開盤帶量站上 5MA 之強勢科技股："
+        desc = "系統偵測昨日均線高度糾結，今日開盤帶量站上 5MA 之 Computex 概念股："
         send_embed(wh['WH_MORNING_REPORT'], "🌅 早盤策略雷達：起漲點掃描", m_fields if m_fields else [{"name":"狀態","value":"今日尚無標的符合壓縮突破條件"}], 0x3498db, desc)
         action_record.append("發送早盤策略雷達")
 
     # ==========================================
-    # 區塊 2: 午盤結算 (13:00 觸發)
+    # 午盤結算 (13:00 觸發)
     # ==========================================
     if is_noon or is_test_mode:
-        l_fields = []
-        for t, info in LONG_PORTFOLIO.items():
-            d = get_stock_data(t, 120)
-            if d:
-                cost = info[2]
-                roi_str = f" {'🟢' if d['price'] >= cost else '🔴'} {((d['price']-cost)/cost*100):.1f}%" if cost > 0 else ""
-                l_fields.append({"name": f"🏛️ {info[0]} ({info[1]}張)", "value": f"價: `{d['price']:.2f}`{roi_str}\n狀態: {'🟢 安全' if d['price']>d['m20'] else '🟡 月線防禦'}", "inline": True})
+        l_fields = [{"name": "狀態", "value": "目前無長線持倉，保留現金部位。", "inline": True}]
         send_embed(wh['WH_LONG_HOLDING'], "🏢 長線左側部位狀態", l_fields, 0x27ae60)
 
-        s_fields = []
-        s_color = 0x2ecc71
-        for t, info in SHORT_PORTFOLIO.items():
-            d = get_stock_data(t)
-            if d:
-                cost = info[4]
-                roi_str = f" {'🟢' if d['price'] >= cost else '🔴'} {((d['price']-cost)/cost*100):.1f}%" if cost > 0 else ""
-                st = "✅ 站穩" if d['price'] >= d[f'm{info[1]}'] else "🚫 破線"
-                if d['price'] < d[f'm{info[1]}']: s_color = 0xf1c40f
-                if d['price'] < d[f'm{info[2]}']: s_color = 0xe74c3c
-                s_fields.append({"name": f"⚔️ {info[0]} ({info[3]}張)", "value": f"價: `{d['price']:.2f}`{roi_str}\n均線: {info[1]}MA | 狀態: {st}", "inline": True})
-        if not s_fields:
-            s_fields.append({"name": "狀態", "value": "目前無短線持倉部位", "inline": True})
-        send_embed(wh['WH_SHORT_HOLDING'], "⚡ 短線右側部位狀態", s_fields, s_color)
+        s_fields = [{"name": "狀態", "value": "目前無短線持倉，等待突破訊號。", "inline": True}]
+        send_embed(wh['WH_SHORT_HOLDING'], "⚡ 短線右側部位狀態", s_fields, 0x7f8c8d)
 
         send_embed(wh['WH_PORTFOLIO_SUMMARY'], "📊 當前持倉彙整總表", l_fields + s_fields, 0x34495e)
-        send_embed(wh['WH_AFTERNOON_REPORT'], "📋 午盤重點簡報", l_fields + s_fields, s_color)
+        send_embed(wh['WH_AFTERNOON_REPORT'], "📋 午盤重點簡報", l_fields + s_fields, 0x34495e)
 
         k_fields = []
         for t, name in WATCH_LIST.items():
             d = get_stock_data(t)
             if d: k_fields.append({"name": f"🔸 {name}", "value": f"`{d['price']:.2f}`", "inline": True})
         if k_fields: 
-            send_embed(wh['WH_KEY_WATCH'], "👀 重點觀察池追蹤", k_fields, 0xe67e22)
+            send_embed(wh['WH_KEY_WATCH'], "👀 大盤溫度計與觀察池", k_fields, 0xe67e22)
             
-        action_record.append("發送午盤總表與持倉狀態")
+        action_record.append("發送午盤總表與空手狀態")
 
     # ==========================================
-    # 區塊 3: 盤後掃描 (15:00 觸發)
+    # 盤後掃描 (15:00 觸發)
     # ==========================================
     if is_afternoon or is_test_mode:
         mac_fields = []
@@ -157,7 +147,7 @@ def main():
             strat = check_strategy(d)
             if strat and strat['is_compressed']:
                 mac_fields.append({"name": f"🌐 {info[1]} | {info[0]}", "value": f"現價: `{d['price']:.2f}`\n壓縮率: `{strat['ratio']:.1f}%` (糾結中)", "inline": True})
-        send_embed(wh['WH_MACRO_WATCH'], "🌍 宏觀題材池：科技股壓縮掃描", mac_fields if mac_fields else [{"name":"狀態","value":"目前科技題材池均線尚無高度壓縮型態"}], 0x1abc9c, "三線糾結代表籌碼蓄積，為資金發動之前兆。")
+        send_embed(wh['WH_MACRO_WATCH'], "🌍 宏觀題材池：Computex 前哨戰壓縮掃描", mac_fields if mac_fields else [{"name":"狀態","value":"目前題材池均線尚無高度壓縮型態"}], 0x1abc9c, "三線糾結代表籌碼蓄積，為資金發動之前兆。")
 
         spf = get_spf_reports()
         if spf: send_embed(wh['WH_SPF_REPORT'], "📉 永豐期貨盤後報告", spf, 0x9b59b6)
@@ -165,12 +155,12 @@ def main():
         action_record.append("發送盤後科技股壓縮與期貨報告")
 
     # ==========================================
-    # 區塊 4: 系統日誌與留痕
+    # 系統日誌與留痕
     # ==========================================
     if action_record or is_test_mode:
         mode_str = "全局測試模式" if is_test_mode else "排程觸發"
         log_fields = [
-            {"name": "系統擴充", "value": "v7.6 導入高階玻纖布板塊 (富喬、建榮) 至宏觀壓縮雷達。"},
+            {"name": "戰略更新", "value": "v7.8 導入 Computex 規格升級板塊 (CPO矽光子、AI電源/水冷)。"},
             {"name": "本次執行任務", "value": "\n".join(action_record) if action_record else "無具體任務"}
         ]
         send_embed(wh['WH_TRADE_LOG'], "✍️ 系統操作留痕", log_fields, 0x7f8c8d)
