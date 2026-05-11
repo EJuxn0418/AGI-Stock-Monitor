@@ -6,40 +6,45 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------
-# 核心數據配置 (v7.8 Computex 戰備版)
+# 核心數據配置 (v8.0 攻守兼備版)
 # ---------------------------------------------------
-# 目前幾乎為空手狀態，嚴格守護現金部位
-LONG_PORTFOLIO = {'00941.TW': ['00941', 2, 16.74]} 
+# 復位長線底倉，鎖定均價 16.74
+LONG_PORTFOLIO = {
+    '00941.TW': ['00941', 2, 16.74]
+} 
+# 短線維持空手，現金為王等待訊號
 SHORT_PORTFOLIO = {} 
 
-# 迎戰 6 月 Computex 的核心規格升級板塊
+# Computex 戰備名單 (全矩陣科技雷達)
 THEME_POOL = {
     '2330.TW': ['台積電', 'AI/半導體'], 
+    '2454.TW': ['聯發科', 'AI/半導體'],
     '2382.TW': ['廣達', 'AI伺服器'], 
     '3711.TW': ['日月光', '先進封裝'], 
     '3131.TWO': ['弘塑', '封測設備'],
-    '3450.TW': ['聯鈞', 'CPO矽光子'],    # 🌟 新增：光通訊/矽光子指標
-    '3363.TW': ['上詮', 'CPO矽光子'],    # 🌟 新增：光通訊/矽光子指標
-    '2308.TW': ['台達電', 'AI電源/散熱'], # 🌟 新增：電源與散熱龍頭，兼具防禦屬性
-    '3324.TW': ['雙鴻', '伺服器水冷'], 
+    '3450.TW': ['聯鈞', 'CPO矽光子'],    
+    '3363.TW': ['上詮', 'CPO矽光子'],    
+    '2308.TW': ['台達電', 'AI電源/散熱'], 
+    '3324.TW': ['雙鴻', '散熱(水冷指標)'], 
+    '3017.TW': ['奇鋐', '散熱(3D VC)'],    
+    '2421.TW': ['建準', '散熱(AI風扇)'],    
     '3491.TWO': ['昇達科', '低軌衛星'], 
     '6285.TW': ['啟碁', '低軌衛星'],
     '1815.TW': ['富喬', '高階玻纖布'], 
     '5340.TWO': ['建榮', '高階玻纖布']
 }
 
-# 觀察池：作為大盤溫度計與潛在遞補名單
+# 觀察池：大盤溫度計
 WATCH_LIST = {
     '0050.TW': '元大台灣50 (大盤指標)', 
     '2317.TW': '鴻海 (組裝動能)', 
-    '2454.TW': '聯發科 (邊緣AI)', 
+    '2454.TW': '聯發科 (邊緣AI)',
     '2344.TW': '華邦電', 
     '2408.TW': '南亞科', 
     '2646.TW': '星宇', 
     '1528.TW':'恩德', 
     '3037.TW': '欣興', 
     '3481.TW':'群創', 
-    '0050.TW': '台灣50'
 }
 
 # --- 功能模組 ---
@@ -119,10 +124,16 @@ def main():
     # 午盤結算 (13:00 觸發)
     # ==========================================
     if is_noon or is_test_mode:
-        l_fields = [{"name": "狀態", "value": "目前無長線持倉，保留現金部位。", "inline": True}]
+        l_fields = []
+        for t, info in LONG_PORTFOLIO.items():
+            d = get_stock_data(t, 120)
+            if d:
+                cost = info[2]
+                roi_str = f" {'🟢' if d['price'] >= cost else '🔴'} {((d['price']-cost)/cost*100):.1f}%" if cost > 0 else ""
+                l_fields.append({"name": f"🏛️ {info[0]} ({info[1]}張)", "value": f"價: `{d['price']:.2f}`{roi_str}\n狀態: {'🟢 安全' if d['price']>d['m20'] else '🟡 月線防禦'}", "inline": True})
         send_embed(wh['WH_LONG_HOLDING'], "🏢 長線左側部位狀態", l_fields, 0x27ae60)
 
-        s_fields = [{"name": "狀態", "value": "目前無短線持倉，等待突破訊號。", "inline": True}]
+        s_fields = [{"name": "狀態", "value": "目前無短線持倉，保留現金等待突破訊號。", "inline": True}]
         send_embed(wh['WH_SHORT_HOLDING'], "⚡ 短線右側部位狀態", s_fields, 0x7f8c8d)
 
         send_embed(wh['WH_PORTFOLIO_SUMMARY'], "📊 當前持倉彙整總表", l_fields + s_fields, 0x34495e)
@@ -135,7 +146,7 @@ def main():
         if k_fields: 
             send_embed(wh['WH_KEY_WATCH'], "👀 大盤溫度計與觀察池", k_fields, 0xe67e22)
             
-        action_record.append("發送午盤總表與空手狀態")
+        action_record.append("發送午盤總表 (含 00941 狀態)")
 
     # ==========================================
     # 盤後掃描 (15:00 觸發)
@@ -160,7 +171,7 @@ def main():
     if action_record or is_test_mode:
         mode_str = "全局測試模式" if is_test_mode else "排程觸發"
         log_fields = [
-            {"name": "戰略更新", "value": "v7.8 導入 Computex 規格升級板塊 (CPO矽光子、AI電源/水冷)。"},
+            {"name": "持倉校準", "value": "v8.0 重新掛載長線部位 00941 (均價 16.74)。"},
             {"name": "本次執行任務", "value": "\n".join(action_record) if action_record else "無具體任務"}
         ]
         send_embed(wh['WH_TRADE_LOG'], "✍️ 系統操作留痕", log_fields, 0x7f8c8d)
