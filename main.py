@@ -13,7 +13,9 @@ LONG_PORTFOLIO = {
     '00941.TW': ['00941', 2, 16.74]
 } 
 # 短線維持空手，現金為王等待訊號
-SHORT_PORTFOLIO = {} 
+SHORT_PORTFOLIO = {
+    '2421.TW': ['建準', 5, 10, 1, 149.0]
+}
 
 # Computex 戰備名單 (全矩陣科技雷達)
 THEME_POOL = {
