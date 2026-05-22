@@ -6,19 +6,18 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------
-# 核心數據配置 (v8.2 新增瑞軒短線持倉)
+# 核心數據配置 (v8.3 剔除建準，新增中興電持倉)
 # ---------------------------------------------------
-# 長線底倉
 LONG_PORTFOLIO = {
     '00941.TW': ['00941', 2, 16.74]
 } 
-# 短線右側部位：建準、瑞軒雙箭頭。設定 5MA 為首要防守，10MA 為最後撤退線
+# 短線右側：中興電 156.5 進場、瑞軒 42.4 持有中。設定 5MA 為首要防線
 SHORT_PORTFOLIO = {
-    '2421.TW': ['建準', 5, 10, 1, 149.0],
-    '2489.TW': ['瑞軒', 5, 10, 1, 42.4]  # 🌟 新增：瑞軒 42.4 進場 1 張
+    '1513.TW': ['中興電', 5, 10, 1, 156.5], # 🌟 新增：中興電 156.5 進場 1 張
+    '2489.TW': ['瑞軒', 5, 10, 1, 42.4]
 } 
 
-# Computex 戰備名單 (限縮新興科技與關鍵材料)
+# 核心題材池 (加入重電/綠電指標)
 THEME_POOL = {
     '2330.TW': ['台積電', 'AI/半導體'], 
     '2382.TW': ['廣達', 'AI伺服器'], 
@@ -29,12 +28,12 @@ THEME_POOL = {
     '2308.TW': ['台達電', 'AI電源/散熱'], 
     '3324.TW': ['雙鴻', '散熱(水冷)'], 
     '3017.TW': ['奇鋐', '散熱(3D VC)'],    
-    '2421.TW': ['建準', '散熱(風扇)'],    
+    '1513.TW': ['中興電', '重電/綠電'],    # 🌟 重新編入雷達監控池
     '3491.TWO': ['昇達科', '低軌衛星'], 
     '6285.TW': ['啟碁', '低軌衛星'],
     '1815.TW': ['富喬', '高階玻纖布'], 
     '5340.TWO': ['建榮', '高階玻纖布'],
-    '2489.TW': ['瑞軒', 'AI機器人/顯示']  # 🌟 同步納入雷達監控池
+    '2489.TW': ['瑞軒', 'AI機器人/顯示']  
 }
 
 WATCH_LIST = {
@@ -94,10 +93,10 @@ def main():
     wh = {k: os.environ.get(k) for k in ['WH_MORNING_REPORT', 'WH_AFTERNOON_REPORT', 'WH_PORTFOLIO_SUMMARY', 'WH_LONG_HOLDING', 'WH_SHORT_HOLDING', 'WH_MACRO_WATCH', 'WH_KEY_WATCH', 'WH_SYS_LOG', 'WH_TRADE_LOG', 'WH_SPF_REPORT']}
     now = datetime.now(timezone(timedelta(hours=8)))
     
-    is_test_mode = now.hour >= 20  
     is_morning = 9 <= now.hour < 12
     is_noon = 12 <= now.hour < 15
     is_afternoon = 15 <= now.hour < 20
+    is_test_mode = now.hour >= 20  
 
     action_record = []
 
@@ -108,8 +107,7 @@ def main():
             strat = check_strategy(d)
             if strat and strat['is_breakout']:
                 m_fields.append({"name": f"🔥 壓縮突破 | {info[0]} ({info[1]})", "value": f"現價: `{d['price']:.2f}`\n壓縮率: `{strat['ratio']:.1f}%`", "inline": True})
-        desc = "系統偵測昨日均線高度糾結，今日開盤帶量站上 5MA 之戰備核心股："
-        send_embed(wh['WH_MORNING_REPORT'], "🌅 早盤策略雷達", m_fields if m_fields else [{"name":"狀態","value":"今日無符合標的"}], 0x3498db, desc)
+        send_embed(wh['WH_MORNING_REPORT'], "🌅 早盤策略雷達", m_fields if m_fields else [{"name":"狀態","value":"今日無符合標的"}], 0x3498db)
         action_record.append("發送早盤策略雷達")
 
     if is_noon or is_test_mode:
@@ -119,7 +117,7 @@ def main():
             if d:
                 cost = info[2]
                 roi_str = f" {'🟢' if d['price'] >= cost else '🔴'} {((d['price']-cost)/cost*100):.1f}%" if cost > 0 else ""
-                l_fields.append({"name": f"🏛️ {info[0]} ({info[1]}張)", "value": f"價: `{d['price']:.2f}`{roi_str}\n狀態: {'🟢 安全' if d['price']>d['m20'] else '🟡 月線防禦'}", "inline": True})
+                l_fields.append({"name": f"🏛️ {info[0]} ({info[1]}張)", "value": f"價: `{d['price']:.2f}`{roi_str}", "inline": True})
         send_embed(wh['WH_LONG_HOLDING'], "🏢 長線部位狀態", l_fields, 0x27ae60)
 
         s_fields = []
@@ -131,16 +129,14 @@ def main():
                 st = "✅ 站穩" if d['price'] >= d[f'm{info[1]}'] else "🚫 破線"
                 s_fields.append({"name": f"⚔️ {info[0]} ({info[3]}張)", "value": f"價: `{d['price']:.2f}`{roi_str}\n均線: {info[1]}MA | 狀態: {st}", "inline": True})
         send_embed(wh['WH_SHORT_HOLDING'], "⚡ 短線部位狀態", s_fields, 0x2ecc71)
-
         send_embed(wh['WH_PORTFOLIO_SUMMARY'], "📊 當前持倉彙整總表", l_fields + s_fields, 0x34495e)
-        send_embed(wh['WH_AFTERNOON_REPORT'], "📋 午盤重點簡報", l_fields + s_fields, 0x34495e)
         
         k_fields = []
         for t, name in WATCH_LIST.items():
             d = get_stock_data(t)
             if d: k_fields.append({"name": f"🔸 {name}", "value": f"`{d['price']:.2f}`", "inline": True})
-        send_embed(wh['WH_KEY_WATCH'], "👀 大盤溫度計與觀察池", k_fields, 0xe67e22)
-        action_record.append("發送持倉狀態更新 (瑞軒進場)")
+        send_embed(wh['WH_KEY_WATCH'], "👀 重點觀察池", k_fields, 0xe67e22)
+        action_record.append("發送持倉狀態更新 (建準實現獲利平倉，換倉中興電)")
 
     if is_afternoon or is_test_mode:
         mac_fields = []
@@ -148,14 +144,14 @@ def main():
             d = get_stock_data(t)
             strat = check_strategy(d)
             if strat and strat['is_compressed']:
-                mac_fields.append({"name": f"🌐 {info[1]} | {info[0]}", "value": f"現價: `{d['price']:.2f}`\n壓縮率: `{strat['ratio']:.1f}%`", "inline": True})
+                mac_fields.append({"name": f"🌐 {info[1]} | {info[0]}", "value": f"現價: `{d['price']:.2f}`", "inline": True})
         send_embed(wh['WH_MACRO_WATCH'], "🌍 宏觀題材壓縮掃描", mac_fields if mac_fields else [{"name":"狀態","value":"目前無高度壓縮標的"}], 0x1abc9c)
         
         spf = get_spf_reports()
         if spf: send_embed(wh['WH_SPF_REPORT'], "📉 永豐期貨盤後", spf, 0x9b59b6)
 
     if action_record or is_test_mode:
-        log_fields = [{"name": "交易紀錄", "value": "2489 瑞軒 42.4 進場 1 張。"}]
+        log_fields = [{"name": "交易紀錄", "value": "2421 建準 160.0 獲利平倉。\n1513 中興電 156.5 進場 1 張。"}]
         send_embed(wh['WH_TRADE_LOG'], "✍️ 系統操作留痕", log_fields, 0x7f8c8d)
         send_embed(wh['WH_SYS_LOG'], "⚙️ 系統日誌", [{"name": "執行時間", "value": f"{now.strftime('%H:%M:%S')}"}], 0x95a5a6)
 
