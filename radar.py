@@ -5,10 +5,10 @@ import requests
 from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------
-# AGI 投資戰情室 v8.8 - 核心產業分流雷達 (radar.py)
+# AGI 投資戰情室 版本號：DV.01.002 - 雙龍頭分流雷達
 # ---------------------------------------------------
-# 每產業配置兩檔「季度超額動能龍頭」，3-5天由對話框動態汰換
 THEME_POOL = {
+    # ⚡ [科技核心一級戰區]
     # 半導體與設備特戰隊 -> 投遞至 WH_RADAR_SEMICON
     '2330.TW': ['台積電', '半導體核心', 'SEMICON'], 
     '3131.TWO': ['弘塑', '先進封裝設備', 'SEMICON'],
@@ -22,11 +22,19 @@ THEME_POOL = {
     '1503.TW': ['士電', '重電能源', 'POWER'],    
     '1514.TW': ['亞力', '重電能源', 'POWER'],
     
-    # 光通訊與新興科技 -> 投遞至 WH_RADAR_OPTICS
+    # 光通訊題材股 -> 投遞至 WH_RADAR_OPTICS
     '3450.TW': ['聯鈞', 'CPO矽光子', 'OPTICS'],    
     '3363.TW': ['上詮', 'CPO矽光子', 'OPTICS'],    
     '1815.TW': ['富喬', '高階玻纖布', 'OPTICS'],
-    '3491.TWO': ['昇達科', '低軌衛星龍頭', 'OPTICS']
+    '3491.TWO': ['昇達科', '低軌衛星龍頭', 'OPTICS'],
+
+    # 🌟 [非科技/傳統產業季度動能池] -> 統一投遞至新開的 WH_RADAR_OTHER
+    '6806.TW': ['雲豹能源', '綠能環保龍頭', 'OTHER'],
+    '2646.TW': ['星宇航空', '航空觀光動能', 'OTHER'],
+    '1795.TW': ['美時', '生技癌症藥巨頭', 'OTHER'],
+    '6472.TW': ['保瑞', '生技CDMO龍頭', 'OTHER'],
+    '2548.TW': ['華固', '高段班營建資產', 'OTHER'],
+    '1101.TW': ['台泥', '低基期儲能轉型', 'OTHER']
 }
 
 def check_strategy(data):
@@ -57,30 +65,29 @@ def send_embed(webhook_url, title, fields, color=0x3498db):
             "title": title, 
             "color": color, 
             "fields": fields, 
-            "footer": {"text": "AGI 季度動能分流雷達"}, 
+            "footer": {"text": "AGI 季度動能分流雷達 DV.01.002"}, 
             "timestamp": datetime.now(timezone.utc).isoformat()
         }]
     }
     requests.post(webhook_url, json=payload)
 
 def main():
-    # 讀取網址：請確保 GitHub Secrets 已綁定這四個全新的環境變數名稱
+    # 讀取網址：包含全新加入的台股其他頻道門牌
     wh_map = {
         'SEMICON': os.environ.get('WH_RADAR_SEMICON'),
         'COOLING': os.environ.get('WH_RADAR_COOLING'),
         'POWER': os.environ.get('WH_RADAR_POWER'),
-        'OPTICS': os.environ.get('WH_RADAR_OPTICS')
+        'OPTICS': os.environ.get('WH_RADAR_OPTICS'),
+        'OTHER': os.environ.get('WH_RADAR_OTHER') # 👈 全新掛載
     }
     
     now = datetime.now(timezone(timedelta(hours=8)))
     is_morning = 9 <= now.hour < 12
     is_afternoon = 15 <= now.hour < 20
-    is_test_mode = now.hour >= 20  # 晚上執行自動進入測試模式
+    is_test_mode = now.hour >= 20  
     
-    # 用來分類打包不同產業訊號的臨時容器
-    signals = {'SEMICON': [], 'COOLING': [], 'POWER': [], 'OPTICS': []}
+    signals = {'SEMICON': [], 'COOLING': [], 'POWER': [], 'OPTICS': [], 'OTHER': []}
 
-    # 全大名單掃描計算
     for t, info in THEME_POOL.items():
         d = get_stock_data(t)
         strat = check_strategy(d)
@@ -88,7 +95,7 @@ def main():
         
         category = info[2]
         
-        # 🌅 早盤模式：抓「壓縮突破」的起漲右側點
+        # 🌅 早盤模式：抓「壓縮突破」的起漲點
         if (is_morning or is_test_mode) and strat['is_breakout']:
             signals[category].append({
                 "name": f"🔥 壓縮突破 | {info[0]} ({info[1]})",
