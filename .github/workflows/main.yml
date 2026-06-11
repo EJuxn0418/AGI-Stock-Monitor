@@ -38,6 +38,7 @@ jobs:
         WH_RADAR_COOLING: ${{ secrets.WH_RADAR_COOLING }}
         WH_RADAR_POWER: ${{ secrets.WH_RADAR_POWER }}
         WH_RADAR_OPTICS: ${{ secrets.WH_RADAR_OPTICS }}
+        WH_RADAR_OTHER: ${{ secrets.WH_RADAR_OTHER }}
         WH_SPF_REPORT: ${{ secrets.WH_SPF_REPORT }}
         WH_SYS_LOG: ${{ secrets.WH_SYS_LOG }} # 👈 這是新開的系統日誌金庫鑰匙！
       run: |
