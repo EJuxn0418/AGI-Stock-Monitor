@@ -2,16 +2,15 @@ name: AGI Trading Room Automation
 
 on:
   schedule:
-    # 🍁 註記：GitHub Actions 使用 UTC 時間，台灣時間 (UTC+8) 需要減去 8 小時
-    # 台灣 09:30 早盤開盤突破雷達 (UTC 01:30)
+    # 台灣時間 09:30 (UTC 01:30) -> 觸發早盤雷達 + 09:30總表 + 日誌
     - cron: '30 1 * * 1-5'
-    # 台灣 13:00 午盤全帳戶資產結算 (UTC 05:00)
+    # 台灣時間 12:00 (UTC 04:00) -> 觸發12:00總表 + 日誌
+    - cron: '0 4 * * 1-5'
+    # 台灣時間 13:00 (UTC 05:00) -> 觸發13:00總表 + 日誌
     - cron: '0 5 * * 1-5'
-    # 台灣 15:00 盤後前任歷史足跡掃描 (UTC 07:00)
+    # 台灣時間 15:00 (UTC 07:00) -> 觸發盤後足跡 + 期貨報告 + 日誌
     - cron: '0 7 * * 1-5'
-    # 台灣 15:10 盤後永豐期貨報告抓取 (UTC 07:10)
-    - cron: '10 7 * * 1-5'
-  workflow_dispatch: # 保留手動強制觸發按鈕
+  workflow_dispatch:
 
 jobs:
   trading_task:
@@ -32,7 +31,6 @@ jobs:
 
     - name: Execute AGI Strategy Modules
       env:
-        # 🔐 將你設定的 GitHub Secrets 鑰匙與程式內部的環境變數進行最高安全級別咬合
         WH_PORTFOLIO_SUMMARY: ${{ secrets.WH_PORTFOLIO_SUMMARY }}
         WH_KEY_WATCH: ${{ secrets.WH_KEY_WATCH }}
         WH_TRADE_LOG: ${{ secrets.WH_TRADE_LOG }}
@@ -41,9 +39,36 @@ jobs:
         WH_RADAR_POWER: ${{ secrets.WH_RADAR_POWER }}
         WH_RADAR_OPTICS: ${{ secrets.WH_RADAR_OPTICS }}
         WH_SPF_REPORT: ${{ secrets.WH_SPF_REPORT }}
+        WH_SYS_LOG: ${{ secrets.WH_SYS_LOG }} # 👈 這是新開的系統日誌金庫鑰匙！
       run: |
-        # 系統會根據當前執行時間，自動判定啟動哪一支特戰程式
-        python radar.py
-        python portfolio.py
-        python footprint.py
-        python spf_report.py
+        # 取得當前台灣時間的小時與分鐘 (UTC+8)
+        TW_HOUR=$(date -d "+8 hours" +%H)
+        TW_MIN=$(date -d "+8 hours" +%M)
+        
+        echo "當前運轉台灣時間：$TW_HOUR:$TW_MIN"
+        
+        # 🌅 09:30 早盤時段
+        if [ "$TW_HOUR" -eq 09 ]; then
+          python radar.py
+          python portfolio.py
+          python sys_log.py morning_radar
+        fi
+        
+        # ☀️ 12:00 中盤時段
+        if [ "$TW_HOUR" -eq 12 ]; then
+          python portfolio.py
+          python sys_log.py noon_portfolio
+        fi
+        
+        # 🌍 13:00 尾盤時段
+        if [ "$TW_HOUR" -eq 13 ]; then
+          python portfolio.py
+          python sys_log.py afternoon_portfolio
+        fi
+        
+        # 📊 15:00 盤後時段
+        if [ "$TW_HOUR" -eq 15 ]; then
+          python footprint.py
+          python spf_report.py
+          python sys_log.py afternoon_scan
+        fi
