@@ -14,7 +14,7 @@ THEME_POOL = {
     '1514.TW': ['亞力', '重電能源', 'POWER'],
     '3450.TW': ['聯鈞', 'CPO矽光子', 'OPTICS'],    
     '3363.TW': ['上詮', 'CPO矽光子', 'OPTICS'],    
-    '1815.TW': ['富喬', '高階玻纖布', 'OPTICS'],
+    '1815.TWO': ['富喬', '高階玻纖布', 'OPTICS'], # 👈 修正為上櫃代碼
     '3491.TWO': ['昇達科', '低軌衛星龍頭', 'OPTICS'],
     '6806.TW': ['雲豹能源', '綠能環保龍頭', 'OTHER'],
     '2646.TW': ['星宇航空', '航空觀光動能', 'OTHER'],
@@ -26,11 +26,15 @@ THEME_POOL = {
 
 def check_strategy(data):
     if not data: return None
-    ma_list = [data['m5'], data['m10'], data['m20']]
-    comp_ratio = (max(ma_list) - min(ma_list)) / min(ma_list)
-    is_compressed = comp_ratio <= 0.03
-    is_breakout = data['price'] > data['m5'] and is_compressed
-    return {"ratio": comp_ratio * 100, "is_compressed": is_compressed, "is_breakout": is_breakout}
+    try:
+        ma_list = [data['m5'], data['m10'], data['m20']]
+        min_ma = min(ma_list)
+        if min_ma <= 0: return None # 防禦 ZeroDivisionError
+        comp_ratio = (max(ma_list) - min_ma) / min_ma
+        is_compressed = comp_ratio <= 0.03
+        is_breakout = data['price'] > data['m5'] and is_compressed
+        return {"ratio": comp_ratio * 100, "is_compressed": is_compressed, "is_breakout": is_breakout}
+    except: return None
 
 def get_stock_data(ticker):
     try:
@@ -42,8 +46,11 @@ def get_stock_data(ticker):
 
 def send_embed(webhook_url, title, fields, color=0x3498db):
     if not webhook_url or not fields: return
-    payload = {"embeds": [{"title": title, "color": color, "fields": fields, "footer": {"text": "AGI 季度動能分流雷達 DV.01.003"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
-    requests.post(webhook_url, json=payload)
+    payload = {"embeds": [{"title": title, "color": color, "fields": fields, "footer": {"text": "AGI 季度動能分流雷達 DV.01.004"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
+    try:
+        requests.post(webhook_url, json=payload, timeout=10) # 👈 加入超時與崩潰防禦
+    except Exception as e:
+        print(f"雷達 Webhook 發送失敗: {e}")
 
 def main():
     wh_map = {
@@ -54,12 +61,10 @@ def main():
         'OTHER': os.environ.get('WH_RADAR_OTHER')
     }
     
-    # 🌟 強制校準為台灣時間 (CST)
     now_tw = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
     is_morning = (now_tw.hour == 9)
-    is_afternoon = (now_tw.hour == 15)
+    is_afternoon = (now_tw.hour >= 14) # 👈 放寬手動測試觸發條件
     
-    # 只要手動點火，如果不在 9 點或 15 點，我們就讓它預設進入 15 點的盤後壓縮掃描模式，確保手動有反應
     if not is_morning and not is_afternoon:
         is_afternoon = True 
 
