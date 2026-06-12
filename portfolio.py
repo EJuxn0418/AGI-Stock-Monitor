@@ -20,7 +20,7 @@ def get_stock_price(ticker):
 
 def send_portfolio_embed(webhook_url, title_suffix, fields):
     if not webhook_url or not fields: return
-    payload = {"embeds": [{"title": f"📊 戰情室結算：{title_suffix}", "description": "系統已對長線底倉、主動型資產與短線個股進行精準定點損益精算：", "color": 0x34495e, "fields": fields, "footer": {"text": "AGI 資產風控中心 DV.01.004"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
+    payload = {"embeds": [{"title": f"📊 戰情室結算：{title_suffix}", "description": "系統已對長線底倉、主動型資產與短線個股進行精準定點損益精算：", "color": 0x34495e, "fields": fields, "footer": {"text": "AGI 資產風控中心 DV.01.005"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
     try:
         requests.post(webhook_url, json=payload, timeout=10)
     except Exception as e:
@@ -52,13 +52,14 @@ def main():
         total_market_value += sub_value
         
         roi_sign = "🟢 +" if roi >= 0 else "🔴 "
-        fields.append({"name": f"🏛️ {name} ({qty}張)", "value": f"成本均價: `{cost:.4f}`\n盤中現價: `{curr_price:.2f}`\n即時損益: `{roi_sign}{roi:.2f}%` (`{sub_profit:+,2.0f} 元`)", "inline": True})
+        # 👈 核心修正：{sub_profit:+,.0f} 解決 ValueError
+        fields.append({"name": f"🏛️ {name} ({qty}張)", "value": f"成本均價: `{cost:.4f}`\n盤中現價: `{curr_price:.2f}`\n即時損益: `{roi_sign}{roi:.2f}%` (`{sub_profit:+,.0f} 元`)", "inline": True})
         
     if total_cost > 0:
         total_profit = total_market_value - total_cost
         total_roi = (total_profit / total_cost) * 100
         total_sign = "🟢 +" if total_profit >= 0 else "🔴 "
-        fields.insert(0, {"name": "💳 全帳戶權益加總 (Equity Summary)", "value": f"總投資本金: `{total_cost:,.0f} 元`\n總估算市值: `{total_market_value:,.0f} 元`\n整體回報率: **`{total_sign}{total_roi:.2f}%`** (**`{total_profit:+,2.0f} 元`**)\n當前狀態: `✅ 短線個股空手，保留最高現金主動權。`", "inline": False})
+        fields.insert(0, {"name": "💳 全帳戶權益加總 (Equity Summary)", "value": f"總投資本金: `{total_cost:,.0f} 元`\n總估算市值: `{total_market_value:,.0f} 元`\n整體回報率: **`{total_sign}{total_roi:.2f}%`** (**`{total_profit:+,.0f} 元`**)\n當前狀態: `✅ 短線個股空手，保留最高現金主動權。`", "inline": False})
         
     send_portfolio_embed(wh_summary, title_suffix, fields)
 
