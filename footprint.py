@@ -13,11 +13,15 @@ WATCH_LIST = {
 
 def check_footprint_strategy(data):
     if not data: return None
-    ma_list = [data['m5'], data['m10'], data['m20']]
-    comp_ratio = (max(ma_list) - min(ma_list)) / min(ma_list)
-    is_compressed = comp_ratio <= 0.03
-    is_breakout = data['price'] > data['m5'] and is_compressed
-    return {"ratio": comp_ratio * 100, "is_compressed": is_compressed, "is_breakout": is_breakout}
+    try:
+        ma_list = [data['m5'], data['m10'], data['m20']]
+        min_ma = min(ma_list)
+        if min_ma <= 0: return None
+        comp_ratio = (max(ma_list) - min_ma) / min_ma
+        is_compressed = comp_ratio <= 0.03
+        is_breakout = data['price'] > data['m5'] and is_compressed
+        return {"ratio": comp_ratio * 100, "is_compressed": is_compressed, "is_breakout": is_breakout}
+    except: return None
 
 def get_stock_data(ticker):
     try:
@@ -29,14 +33,15 @@ def get_stock_data(ticker):
 
 def send_footprint_embed(webhook_url, fields):
     if not webhook_url or not fields: return
-    payload = {"embeds": [{"title": "👀 盤後追蹤：歷史足跡與戰略觀察池報告", "description": "系統已針對你曾操作過的所有前任標的與指定指標進行均線型態掃描：", "color": 0xe67e22, "fields": fields, "footer": {"text": "AGI 歷史軌跡追蹤器 DV.01.003"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
-    requests.post(webhook_url, json=payload)
+    payload = {"embeds": [{"title": "👀 盤後追蹤：歷史足跡與戰略觀察池報告", "description": "系統已針對你曾操作過的所有前任標的與指定指標進行均線型態掃描：", "color": 0xe67e22, "fields": fields, "footer": {"text": "AGI 歷史軌跡追蹤器 DV.01.004"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
+    try:
+        requests.post(webhook_url, json=payload, timeout=10)
+    except Exception as e:
+        print(f"足跡 Webhook 發送失敗: {e}")
 
 def main():
     wh_footprint = os.environ.get('WH_KEY_WATCH')
     now_tw = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
-    
-    # 只要手動按下，一律強制高亮，方便現場抓鬼
     is_afternoon = True 
     fields = []
     
