@@ -20,22 +20,21 @@ def get_stock_price(ticker):
 
 def send_portfolio_embed(webhook_url, title_suffix, fields):
     if not webhook_url or not fields: return
-    payload = {"embeds": [{"title": f"📊 戰情室結算：{title_suffix}", "description": "系統已對長線底倉、主動型資產與短線個股進行精準定點損益精算：", "color": 0x34495e, "fields": fields, "footer": {"text": "AGI 資產風控中心 DV.01.003"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
-    requests.post(webhook_url, json=payload)
+    payload = {"embeds": [{"title": f"📊 戰情室結算：{title_suffix}", "description": "系統已對長線底倉、主動型資產與短線個股進行精準定點損益精算：", "color": 0x34495e, "fields": fields, "footer": {"text": "AGI 資產風控中心 DV.01.004"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
+    try:
+        requests.post(webhook_url, json=payload, timeout=10)
+    except Exception as e:
+        print(f"總表 Webhook 發送失敗: {e}")
 
 def main():
     wh_summary = os.environ.get('WH_PORTFOLIO_SUMMARY')
     now_tw = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
     h = now_tw.hour
     
-    if h == 9:
-        title_suffix = "🌅 09:30 早盤開盤權益觀測總表"
-    elif h == 12:
-        title_suffix = "☀️ 12:00 中盤資金分向總表"
-    elif h == 13:
-        title_suffix = "🌍 13:00 尾盤現貨定型總表"
-    else:
-        title_suffix = f"🧪 盤後手動強制資產結算 ({now_tw.strftime('%H:%M')})"
+    if h == 9: title_suffix = "🌅 09:30 早盤開盤權益觀測總表"
+    elif h == 12: title_suffix = "☀️ 12:00 中盤資金分向總表"
+    elif h == 13: title_suffix = "🌍 13:00 尾盤現貨定型總表"
+    else: title_suffix = f"🧪 盤後手動強制資產結算 ({now_tw.strftime('%H:%M')})"
 
     fields = []
     total_cost = 0
@@ -48,7 +47,7 @@ def main():
         sub_cost = cost * qty * 1000
         sub_value = curr_price * qty * 1000
         sub_profit = sub_value - sub_cost
-        roi = (sub_profit / sub_cost) * 100
+        roi = (sub_profit / sub_cost) * 100 if sub_cost > 0 else 0
         total_cost += sub_cost
         total_market_value += sub_value
         
