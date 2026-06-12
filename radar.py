@@ -14,7 +14,7 @@ THEME_POOL = {
     '1514.TW': ['亞力', '重電能源', 'POWER'],
     '3450.TW': ['聯鈞', 'CPO矽光子', 'OPTICS'],    
     '3363.TW': ['上詮', 'CPO矽光子', 'OPTICS'],    
-    '1815.TWO': ['富喬', '高階玻纖布', 'OPTICS'], # 👈 修正為上櫃代碼
+    '1815.TWO': ['富喬', '高階玻纖布', 'OPTICS'],
     '3491.TWO': ['昇達科', '低軌衛星龍頭', 'OPTICS'],
     '6806.TW': ['雲豹能源', '綠能環保龍頭', 'OTHER'],
     '2646.TW': ['星宇航空', '航空觀光動能', 'OTHER'],
@@ -29,7 +29,7 @@ def check_strategy(data):
     try:
         ma_list = [data['m5'], data['m10'], data['m20']]
         min_ma = min(ma_list)
-        if min_ma <= 0: return None # 防禦 ZeroDivisionError
+        if min_ma <= 0: return None
         comp_ratio = (max(ma_list) - min_ma) / min_ma
         is_compressed = comp_ratio <= 0.03
         is_breakout = data['price'] > data['m5'] and is_compressed
@@ -46,9 +46,9 @@ def get_stock_data(ticker):
 
 def send_embed(webhook_url, title, fields, color=0x3498db):
     if not webhook_url or not fields: return
-    payload = {"embeds": [{"title": title, "color": color, "fields": fields, "footer": {"text": "AGI 季度動能分流雷達 DV.01.004"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
+    payload = {"embeds": [{"title": title, "color": color, "fields": fields, "footer": {"text": "AGI 季度動能分流雷達 DV.01.005"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
     try:
-        requests.post(webhook_url, json=payload, timeout=10) # 👈 加入超時與崩潰防禦
+        requests.post(webhook_url, json=payload, timeout=10)
     except Exception as e:
         print(f"雷達 Webhook 發送失敗: {e}")
 
@@ -62,11 +62,10 @@ def main():
     }
     
     now_tw = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
-    is_morning = (now_tw.hour == 9)
-    is_afternoon = (now_tw.hour >= 14) # 👈 放寬手動測試觸發條件
-    
-    if not is_morning and not is_afternoon:
-        is_afternoon = True 
+    h = now_tw.hour
+    is_morning = (h == 9)
+    is_afternoon = (h == 15)
+    is_manual_test = not is_morning and not is_afternoon # 👈 手動強制測試開關
 
     signals = {'SEMICON': [], 'COOLING': [], 'POWER': [], 'OPTICS': [], 'OTHER': []}
 
@@ -80,11 +79,17 @@ def main():
             signals[category].append({"name": f"🔥 壓縮突破 | {info[0]} ({info[1]})", "value": f"現價: `{d['price']:.2f}`\n壓縮率: `{strat['ratio']:.1f}%`", "inline": True})
         elif is_afternoon and strat['is_compressed']:
             signals[category].append({"name": f"🌐 籌碼蓄積 | {info[0]} ({info[1]})", "value": f"現價: `{d['price']:.2f}`\n壓縮率: `{strat['ratio']:.1f}%`", "inline": True})
+        elif is_manual_test:
+            # 👈 無視條件，強制寫入訊號以驗證門牌
+            signals[category].append({"name": f"🧪 強制通訊驗證 | {info[0]}", "value": f"現價: `{d['price']:.2f}`\n壓縮率: `{strat['ratio']:.1f}%`", "inline": True})
 
     for cat, fields in signals.items():
         if fields:
-            title = "🌅 早盤策略雷達：帶量突破強擊點" if is_morning else "🌍 盤後宏觀掃描：均線高度壓縮池"
-            color = 0xe74c3c if is_morning else 0x1abc9c
+            if is_manual_test:
+                title, color = f"🧪 [系統壓力測試] 頻道 {cat} 連線成功", 0x9b59b6
+            else:
+                title = "🌅 早盤策略雷達：帶量突破強擊點" if is_morning else "🌍 盤後宏觀掃描：均線高度壓縮池"
+                color = 0xe74c3c if is_morning else 0x1abc9c
             send_embed(wh_map[cat], title, fields, color)
 
 if __name__ == "__main__":
