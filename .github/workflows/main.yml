@@ -44,3 +44,4 @@ jobs:
         python portfolio.py
         python footprint.py
         python spf_report.py
+        python sys_log.py
