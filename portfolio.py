@@ -1,67 +1,71 @@
-import yfinance as yf
-import pandas as pd
-import os
-import requests
-from datetime import datetime, timedelta, timezone
+"""資產總表：由交易紀錄自動算出持倉、平均成本與損益。"""
+from common import resolve, live_quotes, daily_history, make_embeds, send, mono
+from config import load_trades, compute_holdings
 
-LONG_PORTFOLIO = {
-    '00941.TW': ['00941 中信上游半導體', 2, 16.74],
-    '00981A.TW': ['00981A 統一台灣優選股A', 4, 29.7625]
-}
-SHORT_PORTFOLIO = {}
 
-def get_stock_price(ticker):
-    try:
-        live = yf.download(ticker, period="1d", interval="1m", progress=False)
-        if not live.empty: return float(live['Close'].values[-1])
-        hist = yf.download(ticker, period="5d", interval="1d", progress=False)
-        return float(hist['Close'].values[-1])
-    except: return None
+def _fmt_qty(q):
+    lots, odd = divmod(int(round(q)), 1000)
+    if odd == 0:
+        return f"{lots}張"
+    return f"{lots}張{odd}股" if lots else f"{odd}股"
 
-def send_portfolio_embed(webhook_url, title_suffix, fields):
-    if not webhook_url or not fields: return
-    payload = {"embeds": [{"title": f"📊 戰情室結算：{title_suffix}", "description": "系統已對長線底倉、主動型資產與短線個股進行精準定點損益精算：", "color": 0x34495e, "fields": fields, "footer": {"text": "AGI 資產風控中心 DV.01.005"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
-    try:
-        requests.post(webhook_url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"總表 Webhook 發送失敗: {e}")
 
-def main():
-    wh_summary = os.environ.get('WH_PORTFOLIO_SUMMARY')
-    now_tw = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
-    h = now_tw.hour
-    
-    if h == 9: title_suffix = "🌅 09:30 早盤開盤權益觀測總表"
-    elif h == 12: title_suffix = "☀️ 12:00 中盤資金分向總表"
-    elif h == 13: title_suffix = "🌍 13:00 尾盤現貨定型總表"
-    else: title_suffix = f"🧪 盤後手動強制資產結算 ({now_tw.strftime('%H:%M')})"
+def run(label):
+    trades = load_trades()
+    holdings, realized = compute_holdings(trades)
+    if not holdings:
+        fields = [{"name": "💳 全帳戶", "value": "目前沒有持倉（全現金）。\n" + f"累計已實現損益 {mono(f'{realized:+,.0f} 元')}", "inline": False}]
+        send("WH_PORTFOLIO_SUMMARY", make_embeds(f"📊 資產總表｜{label}", fields, 0x34495E), label="總表")
+        return "無持倉"
 
-    fields = []
-    total_cost = 0
-    total_market_value = 0
-    
-    for t, info in LONG_PORTFOLIO.items():
-        curr_price = get_stock_price(t)
-        if not curr_price: continue
-        name, qty, cost = info[0], info[1], info[2]
-        sub_cost = cost * qty * 1000
-        sub_value = curr_price * qty * 1000
-        sub_profit = sub_value - sub_cost
-        roi = (sub_profit / sub_cost) * 100 if sub_cost > 0 else 0
-        total_cost += sub_cost
-        total_market_value += sub_value
-        
-        roi_sign = "🟢 +" if roi >= 0 else "🔴 "
-        # 👈 核心修正：{sub_profit:+,.0f} 解決 ValueError
-        fields.append({"name": f"🏛️ {name} ({qty}張)", "value": f"成本均價: `{cost:.4f}`\n盤中現價: `{curr_price:.2f}`\n即時損益: `{roi_sign}{roi:.2f}%` (`{sub_profit:+,.0f} 元`)", "inline": True})
-        
-    if total_cost > 0:
-        total_profit = total_market_value - total_cost
-        total_roi = (total_profit / total_cost) * 100
-        total_sign = "🟢 +" if total_profit >= 0 else "🔴 "
-        fields.insert(0, {"name": "💳 全帳戶權益加總 (Equity Summary)", "value": f"總投資本金: `{total_cost:,.0f} 元`\n總估算市值: `{total_market_value:,.0f} 元`\n整體回報率: **`{total_sign}{total_roi:.2f}%`** (**`{total_profit:+,.0f} 元`**)\n當前狀態: `✅ 短線個股空手，保留最高現金主動權。`", "inline": False})
-        
-    send_portfolio_embed(wh_summary, title_suffix, fields)
+    ymap = resolve([h["code"] for h in holdings])
+    live = live_quotes(ymap.values())
+    hist = None
 
-if __name__ == "__main__":
-    main()
+    fields, total_cost, total_value, missing = [], 0.0, 0.0, []
+    for h in sorted(holdings, key=lambda x: (x["type"] != "長線", x["code"])):
+        t = ymap[h["code"]]
+        q = live.get(t)
+        price = q["price"] if q else None
+        if not price:
+            if hist is None:
+                hist = daily_history(ymap.values(), period="10d")
+            if t in hist:
+                price = float(hist[t]["Close"].iloc[-1])
+        if not price:
+            missing.append(h["code"])
+            continue
+        value = price * h["qty"]
+        pnl = value - h["cost"]
+        roi = pnl / h["cost"] * 100 if h["cost"] else 0
+        total_cost += h["cost"]
+        total_value += value
+        sign = "🟢" if pnl >= 0 else "🔴"
+        tag = "🏛️ 長線" if h["type"] == "長線" else "⚡ 短線"
+        avg = h["avg"]
+        fields.append({
+            "name": f"{tag} | {h['name']} {h['code']}（{_fmt_qty(h['qty'])}）",
+            "value": "\n".join([f"均價 {mono(f'{avg:.2f}')}　現價 {mono(f'{price:.2f}')}",
+                                f"{sign} {mono(f'{roi:+.2f}%')}　{mono(f'{pnl:+,.0f} 元')}"]),
+            "inline": True,
+        })
+
+    if total_cost:
+        tp = total_value - total_cost
+        tr = tp / total_cost * 100
+        short_n = sum(1 for h in holdings if h["type"] != "長線")
+        status = f"短線持有 {short_n} 檔" if short_n else "短線空手，保留現金主動權"
+        fields.insert(0, {
+            "name": "💳 全帳戶權益",
+            "value": "\n".join([
+                f"持倉成本 {mono(f'{total_cost:,.0f} 元')}",
+                f"目前市值 {mono(f'{total_value:,.0f} 元')}",
+                f"未實現損益 **{mono(f'{tp:+,.0f} 元（{tr:+.2f}%）')}**",
+                f"累計已實現 {mono(f'{realized:+,.0f} 元')}",
+                f"狀態：{status}",
+            ]),
+            "inline": False,
+        })
+    desc = f"⚠️ 抓不到報價：{'、'.join(missing)}" if missing else None
+    send("WH_PORTFOLIO_SUMMARY", make_embeds(f"📊 資產總表｜{label}", fields, 0x34495E, description=desc), label="總表")
+    return f"{len(holdings)} 檔持倉，未實現 {total_value - total_cost:+,.0f} 元"

@@ -1,63 +1,58 @@
-import yfinance as yf
-import pandas as pd
-import os
-import requests
-from datetime import datetime, timedelta, timezone
+"""歷史足跡觀察池：交易紀錄出現過的所有股票 + 手動觀察名單，盤後掃描均線型態。
+另外負責把今天新記的交易推到 #操作留痕。"""
+from common import resolve, daily_history, ma_snapshot, make_embeds, send, mono, today_tw
+from config import load_trades, compute_holdings, load_watch
 
-WATCH_LIST = {
-    '0050.TW': '元大台灣50 (歷史止盈)', '2317.TW': '鴻海 (組裝權值指標)', '2454.TW': '聯發科 (晶片權值指標)',
-    '1528.TW': '恩德 (歷史短線倉)', '3481.TW': '群創 (歷史短線倉)', '2421.TW': '建準 (歷史短線倉)',
-    '1513.TW': '中興電 (歷史短線倉)', '2489.TW': '瑞軒 (歷史短線倉)', '2344.TW': '華邦電 (歷史監控)',
-    '2646.TW': '星宇航空 (歷史監控)', '3037.TW': '欣興 (歷史監控)'
-}
 
-def check_footprint_strategy(data):
-    if not data: return None
-    try:
-        ma_list = [data['m5'], data['m10'], data['m20']]
-        min_ma = min(ma_list)
-        if min_ma <= 0: return None
-        comp_ratio = (max(ma_list) - min_ma) / min_ma
-        is_compressed = comp_ratio <= 0.03
-        is_breakout = data['price'] > data['m5'] and is_compressed
-        return {"ratio": comp_ratio * 100, "is_compressed": is_compressed, "is_breakout": is_breakout}
-    except: return None
+def run():
+    trades = load_trades()
+    holdings, _ = compute_holdings(trades)
+    held = {h["code"] for h in holdings}
+    watch = load_watch(trades)
+    ymap = resolve([w["code"] for w in watch])
+    hist = daily_history(ymap.values())
 
-def get_stock_data(ticker):
-    try:
-        hist = yf.download(ticker, period="60d", interval="1d", progress=False)
-        live = yf.download(ticker, period="1d", interval="1m", progress=False)
-        curr = float(live['Close'].values[-1]) if not live.empty else float(hist['Close'].values[-1])
-        return {"price": curr, "m5": float(hist['Close'].rolling(5).mean().values[-1]), "m10": float(hist['Close'].rolling(10).mean().values[-1]), "m20": float(hist['Close'].rolling(20).mean().values[-1])}
-    except: return None
+    rows = []
+    for w in watch:
+        snap = ma_snapshot(hist.get(ymap[w["code"]]))
+        if not snap:
+            continue
+        if snap["breakout"]:
+            rank, status = 0, "🔥 壓縮後站上 5MA"
+        elif snap["compressed"]:
+            rank, status = 1, "🌐 均線糾結蓄勢"
+        elif snap["price"] < snap["m20"]:
+            rank, status = 3, "🔻 在 20MA 之下"
+        else:
+            rank, status = 2, "⚪ 均線發散"
+        price, ratio, m20 = snap["price"], snap["ratio"], snap["m20"]
+        badge = "（持有中）" if w["code"] in held else ""
+        rows.append((rank, {
+            "name": f"{w['name']} {w['code']}{badge}",
+            "value": "\n".join([status, f"現價 {mono(f'{price:.2f}')}　20MA {mono(f'{m20:.2f}')}",
+                                f"壓縮率 {mono(f'{ratio:.1f}%')}"]),
+            "inline": True,
+        }))
+    rows.sort(key=lambda r: r[0])
+    fields = [r[1] for r in rows]
+    hot = sum(1 for r in rows if r[0] <= 1)
+    send("WH_KEY_WATCH", make_embeds("👀 盤後追蹤：歷史足跡觀察池", fields, 0xE67E22,
+                                     description=f"共 {len(fields)} 檔，其中 {hot} 檔進入壓縮或突破型態"),
+         label="歷史足跡")
+    return f"觀察 {len(fields)} 檔，{hot} 檔有訊號"
 
-def send_footprint_embed(webhook_url, fields):
-    if not webhook_url or not fields: return
-    payload = {"embeds": [{"title": "👀 盤後追蹤：歷史足跡與戰略觀察池報告", "description": "系統已針對你曾操作過的所有前任標的與指定指標進行均線型態掃描：", "color": 0xe67e22, "fields": fields, "footer": {"text": "AGI 歷史軌跡追蹤器 DV.01.004"}, "timestamp": datetime.now(timezone.utc).isoformat()}]}
-    try:
-        requests.post(webhook_url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"足跡 Webhook 發送失敗: {e}")
 
-def main():
-    wh_footprint = os.environ.get('WH_KEY_WATCH')
-    now_tw = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
-    is_afternoon = True 
+def trade_log():
+    today = today_tw()
+    todays = [t for t in load_trades() if t["date"] == today]
+    if not todays:
+        return "今日無新交易"
     fields = []
-    
-    for t, name in WATCH_LIST.items():
-        d = get_stock_data(t)
-        strat = check_footprint_strategy(d)
-        if not strat: continue
-        
-        if strat['is_breakout']: status_icon = "🔥 [起漲突破訊號]"
-        elif strat['is_compressed']: status_icon = "🌐 [籌碼蓄勢糾結中]"
-        else: status_icon = "⚪ 波動發散盤整中"
-            
-        if strat['is_compressed'] or strat['is_breakout'] or is_afternoon:
-            fields.append({"name": f"{name} ({t})", "value": f"當前現價: `{d['price']:.2f}`\n狀態型態: {status_icon}\n即時壓縮率: `{strat['ratio']:.1f}%`", "inline": True})
-            
-    send_footprint_embed(wh_footprint, fields)
-
-if __name__ == "__main__":
-    main()
+    for t in todays:
+        act = "🟥 買進" if t["side"] > 0 else "🟩 賣出"
+        price, qty = t["price"], t["qty"]
+        value = "\n".join(x for x in [f"價格 {mono(f'{price:.2f}')}　股數 {mono(f'{qty:,.0f}')}",
+                                      f"{t['type']}" + (f"｜{t['note']}" if t["note"] else "")] if x)
+        fields.append({"name": f"{act} {t['name']} {t['code']}", "value": value, "inline": True})
+    send("WH_TRADE_LOG", make_embeds(f"📝 操作留痕｜{today:%Y/%m/%d}", fields, 0x34495E), label="操作留痕")
+    return f"今日 {len(todays)} 筆交易"

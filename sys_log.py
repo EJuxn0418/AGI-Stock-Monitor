@@ -1,48 +1,30 @@
-import os
-import requests
-import sys
-from datetime import datetime, timedelta, timezone
+"""系統日誌：每次任務結束回報執行結果；有錯誤一定會亮紅燈，不再默默吞掉。"""
+from common import make_embeds, send, mono, now_tw, ERRORS, WARNINGS, env
 
-def send_log_embed(webhook_url, channel_name, task_name, message, color=0x95a5a6):
-    if not webhook_url: return
-    payload = {
-        "embeds": [{
-            "title": f"⚙️ AGI 運行日誌 - 核心同步完成",
-            "description": f"系統已成功向 [**{channel_name}**] 執行自動化指令同步。",
-            "color": color,
-            "fields": [
-                {"name": "⚙️ 觸發模組任務", "value": f"`{task_name}`", "inline": True},
-                {"name": "📊 核心同步狀態", "value": f"✅ `{message}`", "inline": True}
-            ],
-            "footer": {"text": "AGI 核心維護日誌中心 DV.01.003"},
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }]
-    }
-    requests.post(webhook_url, json=payload)
 
-def main():
-    wh_sys_log = os.environ.get('WH_SYS_LOG')
-    wh_trade_log = os.environ.get('WH_TRADE_LOG')
+def report(task_label, results, seconds, quiet=False):
+    """results: [(模組名稱, 結果文字或例外)]；quiet=True 時只有出錯才發（盤中警報用，避免洗版）。"""
+    if quiet and not ERRORS:
+        return
+    color = 0xE74C3C if ERRORS else 0xF1C40F if WARNINGS else 0x2ECC71
+    status = "❌ 有錯誤" if ERRORS else "⚠️ 完成但有提醒" if WARNINGS else "✅ 正常"
+    fields = [{"name": name, "value": str(res)[:1000] or "-", "inline": False} for name, res in results]
+    if ERRORS:
+        fields.append({"name": "❌ 錯誤", "value": "\n".join(ERRORS[:10])[:1000], "inline": False})
+    if WARNINGS:
+        fields.append({"name": "⚠️ 提醒", "value": "\n".join(WARNINGS[:10])[:1000], "inline": False})
+    run_url = env("RUN_URL")
+    desc = f"{status}｜耗時 {mono(f'{seconds:.0f} 秒')}" + (f"｜[執行紀錄]({run_url})" if run_url else "")
+    send("WH_SYS_LOG", make_embeds(f"⚙️ 系統日誌｜{task_label}｜{now_tw():%m/%d %H:%M}", fields, color, description=desc),
+         label="系統日誌")
 
-    now_tw = datetime.now(timezone(timedelta(hours=8)))
-    h = now_tw.hour
-    
-    # 根據當前實體台灣時間自動判定任務名稱
-    if h == 9:
-        task_info = ["09:30 早盤開盤突破雷達", "已完成雙龍頭均線壓縮起漲突破度掃描。"]
-    elif h == 12:
-        task_info = ["12:00 中盤權益總表結算", "已完成全帳戶資產中盤即時損益精算。"]
-    elif h == 13:
-        task_info = ["13:00 尾盤權益總表結算", "已完成現貨收盤權益加總與狀態留痕。"]
-    elif h == 15:
-        task_info = ["15:00 歷史足跡與期貨報告", "已完成11檔前任籌碼沉澱池掃描與永豐期貨報告爬取。"]
-    else:
-        task_info = [f"🧪 盤中手動強制突擊測試 ({now_tw.strftime('%H:%M')})", "手動無視時間鎖測試，核心通道全面暢通！"]
 
-    if wh_sys_log:
-        send_log_embed(wh_sys_log, "#系統日誌", task_info[0], task_info[1], color=0x7f8c8d)
-    if wh_trade_log:
-        send_log_embed(wh_trade_log, "#操作留痕 (備援)", task_info[0], task_info[1], color=0x34495e)
-
-if __name__ == "__main__":
-    main()
+def channel_test():
+    """手動測試：每個頻道各送一張測試卡，確認 webhook 都通。"""
+    names = ["WH_PORTFOLIO_SUMMARY", "WH_KEY_WATCH", "WH_TRADE_LOG", "WH_RADAR_SEMICON", "WH_RADAR_COOLING",
+             "WH_RADAR_POWER", "WH_RADAR_OPTICS", "WH_RADAR_OTHER", "WH_SPF_REPORT", "WH_ALERT"]
+    ok, bad = [], []
+    for n in names:
+        card = make_embeds("🧪 連線測試", [{"name": n, "value": f"這個頻道的 webhook 正常｜{now_tw():%H:%M:%S}", "inline": False}], 0x9B59B6)
+        (ok if send(n, card, label=n) else bad).append(n)
+    return f"成功 {len(ok)}，失敗/未設定 {len(bad)}" + (f"：{'、'.join(bad)}" if bad else "")
