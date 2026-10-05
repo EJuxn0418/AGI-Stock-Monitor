@@ -1,5 +1,6 @@
 """官方產業分類：從證交所／櫃買中心 OpenAPI 抓公司基本資料（產業別、股數），同時順便確定上市或上櫃。"""
 import re
+import time
 import requests
 import common
 from common import fnum, warn
@@ -17,10 +18,18 @@ SKIP = {"管理股票", "存託憑證"}
 _CACHE = None
 
 
-def _get(url):
-    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=40)
-    r.raise_for_status()
-    return r.json()
+def _get(url, tries=4):
+    """官方 OpenAPI 偶爾會在大檔案傳到一半時斷線，所以失敗會等幾秒重試。"""
+    last = None
+    for i in range(tries):
+        try:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0", "Accept-Encoding": "gzip"}, timeout=60)
+            r.raise_for_status()
+            return r.json()
+        except Exception as ex:
+            last = ex
+            time.sleep(3 * (i + 1))
+    raise last
 
 
 def official():
