@@ -22,7 +22,7 @@ def run():
         elif snap["compressed"]:
             rank, status = 1, "🌐 均線糾結蓄勢"
         elif snap["price"] < snap["m20"]:
-            rank, status = 3, "🔻 在 20MA 之下"
+            rank, status = 3, "📉 在 20MA 之下"
         else:
             rank, status = 2, "⚪ 均線發散"
         price, ratio, m20 = snap["price"], snap["ratio"], snap["m20"]

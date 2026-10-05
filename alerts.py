@@ -62,7 +62,7 @@ def check(rules, live, hist, ymap, state):
             fired.append({
                 "direction": r["direction"],
                 "field": {
-                    "name": f"{'🔻' if r['direction'] == 'below' else '🔺'} {r['name']} {r['code']}　{word} {what}",
+                    "name": f"{'🟢📉' if r['direction'] == 'below' else '🔴📈'} {r['name']} {r['code']}　{word} {what}",
                     "value": "\n".join([f"現價 {mono(f'{price:.2f}')}　參考線 {mono(f'{line:.2f}')}（{gap:+.2f}%）",
                                         f"時間 {q.get('time') or now_tw().strftime('%H:%M')}"]),
                     "inline": False,
@@ -82,7 +82,7 @@ def run():
     state = load_state()
     fired = check(rules, live, hist, ymap, state)
     save_state(state)
-    for direction, title, color in (("below", "🚨 跌破警報", 0xE74C3C), ("above", "📈 站上警報", 0x2ECC71)):
+    for direction, title, color in (("below", "📉 跌破警報", 0x2ECC71), ("above", "📈 站上警報", 0xE74C3C)):  # 台股：紅漲綠跌
         fields = [f["field"] for f in fired if f["direction"] == direction]
         if fields:
             send("WH_ALERT", make_embeds(title, fields, color), label="警報")

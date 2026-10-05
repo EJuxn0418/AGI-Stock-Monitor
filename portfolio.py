@@ -40,7 +40,7 @@ def run(label):
         roi = pnl / h["cost"] * 100 if h["cost"] else 0
         total_cost += h["cost"]
         total_value += value
-        sign = "🟢" if pnl >= 0 else "🔴"
+        sign = "🔴" if pnl > 0 else "🟢" if pnl < 0 else "⚪"  # 台股：紅漲綠跌
         tag = "🏛️ 長線" if h["type"] == "長線" else "⚡ 短線"
         avg = h["avg"]
         fields.append({
