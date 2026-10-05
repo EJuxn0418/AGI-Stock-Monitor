@@ -67,7 +67,7 @@ def load_trades(include_seen=False):
         act = str(r.get("動作", "")).strip()
         side = 1 if act in ("買", "買進", "買入", "BUY", "buy", "B") else -1 if act in ("賣", "賣出", "SELL", "sell", "S") else 0
         price, qty = fnum(r.get("價格")), fnum(r.get("股數"))
-        if code and act in ("曾持有", "持有過", "舊"):
+        if code and (act in ("曾持有", "持有過", "舊") or (side == -1 and (not price or not qty))):  # 賣但沒填價量＝曾持有
             if include_seen:
                 trades.append({"date": parse_date(r.get("日期")), "code": code, "name": r.get("名稱") or code,
                                "side": 0, "price": 0, "qty": 0, "type": "", "note": r.get("備註", ""), "row": i})
