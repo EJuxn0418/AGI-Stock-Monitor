@@ -1,45 +1,49 @@
-"""歷史足跡觀察池：交易紀錄出現過的所有股票 + 手動觀察名單，盤後掃描均線型態。
+"""歷史足跡：交易紀錄出現過的所有股票（含「曾持有」），盤後用同一套訊號掃描。
 另外負責把今天新記的交易推到 #操作留痕。"""
-from common import resolve, daily_history, ma_snapshot, make_embeds, send, mono, today_tw
-from config import load_trades, compute_holdings, load_watch
+from common import resolve, daily_history, make_embeds, send, mono, today_tw
+from config import load_trades, compute_holdings, load_radar, load_settings
+import industry
+import signals
 
 
 def run():
-    trades = load_trades()
-    holdings, _ = compute_holdings(trades)
+    """盤後：經手過的股票。持有中的一定列出；其他只列有訊號的；已在產業雷達出現的不重複（雷達卡片上有 ⭐）。"""
+    import radar
+    cfg = load_settings()
+    seen = load_trades(include_seen=True)
+    holdings, _ = compute_holdings([t for t in seen if t["side"]])
     held = {h["code"] for h in holdings}
-    watch = load_watch(trades)
-    ymap = resolve([w["code"] for w in watch])
+    names = {}
+    for t in seen:
+        names[t["code"]] = t["name"]
+    pool_tags = {p["code"]: p["tags"] for p in load_radar()}
+    codes = list(names)
+    ymap = resolve(codes)
     hist = daily_history(ymap.values())
 
-    rows = []
-    for w in watch:
-        snap = ma_snapshot(hist.get(ymap[w["code"]]))
-        if not snap:
+    held_f, hit_f, quiet, dup = [], [], 0, 0
+    for c in codes:
+        if c in radar.LAST["hits"]:
+            dup += 1
             continue
-        if snap["breakout"]:
-            rank, status = 0, "🔥 壓縮後站上 5MA"
-        elif snap["compressed"]:
-            rank, status = 1, "🌐 均線糾結蓄勢"
-        elif snap["price"] < snap["m20"]:
-            rank, status = 3, "📉 在 20MA 之下"
+        sig = signals.analyze(hist.get(ymap[c]), cfg)
+        if not sig:
+            continue
+        ind = industry.info(c)["industry"]
+        f = signals.field(names[c], c, ind, pool_tags.get(c, ""), sig)
+        if c in held:
+            if not sig["hit"]:
+                f["value"] += "\n（無訊號）"
+            f["name"] = "💼 " + f["name"]
+            held_f.append(f)
+        elif sig["hit"]:
+            hit_f.append(f)
+            radar.LAST["hits"][c] = {"sig": sig, "name": names[c], "industry": ind, "star": False, "source": "footprint"}
         else:
-            rank, status = 2, "⚪ 均線發散"
-        price, ratio, m20 = snap["price"], snap["ratio"], snap["m20"]
-        badge = "（持有中）" if w["code"] in held else ""
-        rows.append((rank, {
-            "name": f"{w['name']} {w['code']}{badge}",
-            "value": "\n".join([status, f"現價 {mono(f'{price:.2f}')}　20MA {mono(f'{m20:.2f}')}",
-                                f"壓縮率 {mono(f'{ratio:.1f}%')}"]),
-            "inline": True,
-        }))
-    rows.sort(key=lambda r: r[0])
-    fields = [r[1] for r in rows]
-    hot = sum(1 for r in rows if r[0] <= 1)
-    send("WH_KEY_WATCH", make_embeds("👀 盤後追蹤：歷史足跡觀察池", fields, 0xE67E22,
-                                     description=f"共 {len(fields)} 檔，其中 {hot} 檔進入壓縮或突破型態"),
-         label="歷史足跡")
-    return f"觀察 {len(fields)} 檔，{hot} 檔有訊號"
+            quiet += 1
+    desc = f"另有 {quiet} 檔無訊號" + (f"；{dup} 檔已列在產業雷達（⭐）" if dup else "")
+    send("WH_KEY_WATCH", make_embeds("👣 盤後歷史足跡", held_f + hit_f, 0xE67E22, description=desc), label="歷史足跡")
+    return f"足跡 {len(codes)} 檔：持有 {len(held_f)}、有訊號 {len(hit_f)}、無訊號 {quiet}、與雷達共振 {dup}"
 
 
 def trade_log():

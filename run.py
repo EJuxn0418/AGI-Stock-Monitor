@@ -8,16 +8,18 @@ import common
 import sys_log
 
 TASKS = {
-    "morning":   ("09:30 早盤", [("早盤雷達", lambda: __import__("radar").run("breakout")),
+    "morning":   ("09:30 早盤", [("早盤雷達", lambda: __import__("radar").run("morning")),
                                  ("資產總表", lambda: __import__("portfolio").run("09:30 早盤"))], True),
-    "midday":    ("12:00 午盤", [("資產總表", lambda: __import__("portfolio").run("12:00 午盤"))], True),
+    "midday":    ("12:00 午盤", [("資產總表", lambda: __import__("portfolio").run("12:00 午盤")),
+                                 ("午盤量能", lambda: __import__("radar").run("midday"))], True),
     "close":     ("13:00 尾盤", [("資產總表", lambda: __import__("portfolio").run("13:00 尾盤"))], True),
-    "afternoon": ("15:00 盤後", [("盤後雷達", lambda: __import__("radar").run("compression")),
+    "afternoon": ("15:00 盤後", [("盤後雷達", lambda: __import__("radar").run("afternoon")),
                                  ("歷史足跡", lambda: __import__("footprint").run()),
-                                 ("操作留痕", lambda: __import__("footprint").trade_log())], True),
-    "spf":       ("15:10 永豐期貨", [("永豐期貨", lambda: __import__("spf_report").run())], True),
+                                 ("操作留痕", lambda: __import__("footprint").trade_log()),
+                                 ("訊號紀錄", lambda: __import__("signal_log").run())], True),
+    "spf":       ("15:35 永豐期貨", [("永豐期貨", lambda: __import__("spf_report").run())], True),
     "intraday":  ("盤中警報", [("警報引擎", lambda: __import__("alerts").run())], True),
-    "weekly":    ("每週題材池建議", [("題材池排名", lambda: __import__("weekly").run())], False),
+    "weekly":    ("每週龍頭建議", [("龍頭排名", lambda: __import__("weekly").run())], False),
     "test":      ("手動連線測試", [("各頻道 webhook", sys_log.channel_test)], False),
 }
 

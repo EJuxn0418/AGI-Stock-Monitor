@@ -21,8 +21,8 @@ def report(task_label, results, seconds, quiet=False):
 
 def channel_test():
     """手動測試：每個頻道各送一張測試卡，確認 webhook 都通。"""
-    names = ["WH_PORTFOLIO_SUMMARY", "WH_KEY_WATCH", "WH_TRADE_LOG", "WH_RADAR_SEMICON", "WH_RADAR_COOLING",
-             "WH_RADAR_POWER", "WH_RADAR_OPTICS", "WH_RADAR_OTHER", "WH_SPF_REPORT", "WH_ALERT"]
+    names = ["WH_PORTFOLIO_SUMMARY", "WH_KEY_WATCH", "WH_TRADE_LOG", "WH_RADAR" if env("WH_RADAR") else "WH_RADAR_SEMICON",
+             "WH_SPF_REPORT", "WH_ALERT"]
     ok, bad = [], []
     for n in names:
         card = make_embeds("🧪 連線測試", [{"name": n, "value": f"這個頻道的 webhook 正常｜{now_tw():%H:%M:%S}", "inline": False}], 0x9B59B6)

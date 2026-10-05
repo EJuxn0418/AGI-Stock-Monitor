@@ -2,30 +2,21 @@
 import re
 from common import read_tab, norm_code, enabled, fnum, parse_date, warn
 
-CHANNELS = {
-    "SEMICON": "WH_RADAR_SEMICON", "半導體": "WH_RADAR_SEMICON",
-    "COOLING": "WH_RADAR_COOLING", "散熱": "WH_RADAR_COOLING",
-    "POWER": "WH_RADAR_POWER", "重電": "WH_RADAR_POWER", "重電能源": "WH_RADAR_POWER",
-    "OPTICS": "WH_RADAR_OPTICS", "光通訊": "WH_RADAR_OPTICS",
-    "OTHER": "WH_RADAR_OTHER", "其他": "WH_RADAR_OTHER", "台股其他": "WH_RADAR_OTHER",
+PIN_TRUE = {"是", "Y", "YES", "V", "✅", "1", "TRUE", "釘選", "O"}
+
+SETTINGS = {  # 試算表「說明」分頁可以覆寫（依「項目」欄的關鍵字對應）
+    "near_pct": ("快要站上", 1.0),
+    "big_vol": ("大量", 2.0),
+    "midday_pct": ("午盤", 80.0),
+    "top_n": ("龍頭", 3),
 }
 
-# ---- 預設值（試算表設定好之後就不會用到）----
-DEFAULT_THEME = [
-    ("2330", "台積電", "半導體核心", "SEMICON"), ("3131", "弘塑", "先進封裝設備", "SEMICON"),
-    ("3583", "辛耘", "先進封裝設備", "SEMICON"), ("3324", "雙鴻", "散熱", "COOLING"),
-    ("3017", "奇鋐", "散熱", "COOLING"), ("1503", "士電", "重電能源", "POWER"),
-    ("1514", "亞力", "重電能源", "POWER"), ("3450", "聯鈞", "CPO矽光子", "OPTICS"),
-    ("3363", "上詮", "CPO矽光子", "OPTICS"), ("1815", "富喬", "高階玻纖布", "OPTICS"),
-    ("3491", "昇達科", "低軌衛星", "OPTICS"), ("6806", "雲豹能源", "綠能", "OTHER"),
-    ("2646", "星宇航空", "航空觀光", "OTHER"), ("1795", "美時", "生技", "OTHER"),
-    ("6472", "保瑞", "生技CDMO", "OTHER"), ("2548", "華固", "營建", "OTHER"),
-    ("1101", "台泥", "儲能轉型", "OTHER"),
-]
-DEFAULT_WATCH = [
-    ("0050", "元大台灣50"), ("2317", "鴻海"), ("2454", "聯發科"), ("1528", "恩德"),
-    ("3481", "群創"), ("2421", "建準"), ("1513", "中興電"), ("2489", "瑞軒"),
-    ("2344", "華邦電"), ("2646", "星宇航空"), ("3037", "欣興"),
+# ---- 預設值（試算表讀不到時才會用）----
+DEFAULT_RADAR = [
+    ("2330", "台積電", "晶圓代工、AI"), ("2303", "聯電", "成熟製程、ASIC"), ("3131", "弘塑", "先進封裝設備"),
+    ("3017", "奇鋐", "散熱"), ("1503", "士電", "重電"), ("1519", "華城", "重電"), ("4979", "華星光", "CPO"),
+    ("3363", "上詮", "CPO矽光子"), ("2492", "華新科", "被動元件"), ("4958", "臻鼎-KY", "PCB"),
+    ("2383", "台光電", "CCL銅箔基板"), ("3105", "穩懋", "砷化鎵、矽光子"),
 ]
 DEFAULT_TRADES = [
     {"日期": "2026/06/12", "代號": "00941", "名稱": "中信上游半導體", "動作": "買", "價格": "16.74", "股數": "2000", "類型": "長線"},
@@ -33,24 +24,40 @@ DEFAULT_TRADES = [
 ]
 
 
-def load_theme_pool():
-    rows = read_tab("題材池", required=("代號", "頻道"))
+def load_settings():
+    cfg = {k: v for k, (_, v) in SETTINGS.items()}
+    rows = read_tab("說明", required=("項目", "數值"))
+    for r in rows or []:
+        item, val = r.get("項目", ""), fnum(r.get("數值"))
+        if not item or val is None:
+            continue
+        for key, (kw, default) in SETTINGS.items():
+            if kw in item:
+                cfg[key] = int(val) if isinstance(default, int) else float(val)
+    return cfg
+
+
+def load_radar():
+    """產業雷達：代號、名稱、題材、釘選。題材空白會提醒。"""
+    rows = read_tab("產業雷達", required=("代號", "題材"))
     if rows is None:
-        rows = [{"代號": c, "名稱": n, "題材": t, "頻道": ch} for c, n, t, ch in DEFAULT_THEME]
-    pool = []
+        rows = [{"代號": c, "名稱": n, "題材": t} for c, n, t in DEFAULT_RADAR]
+    pool, seen = [], set()
     for r in rows:
         code = norm_code(r.get("代號"))
-        if not code or not enabled(r.get("啟用")):
+        if not code or code in seen:
             continue
-        ch = CHANNELS.get(r.get("頻道", "").strip().upper()) or CHANNELS.get(r.get("頻道", "").strip())
-        if not ch:
-            warn(f"題材池 {code} 的頻道「{r.get('頻道')}」看不懂，改送到台股其他")
-            ch = "WH_RADAR_OTHER"
-        pool.append({"code": code, "name": r.get("名稱") or code, "theme": r.get("題材", ""), "webhook": ch})
+        seen.add(code)
+        tags = r.get("題材", "").strip()
+        if not tags:
+            warn(f"產業雷達 {code} {r.get('名稱', '')} 沒有填題材")
+        pool.append({"code": code, "name": r.get("名稱") or code, "tags": tags,
+                     "pinned": str(r.get("釘選", "")).strip().upper() in PIN_TRUE})
     return pool
 
 
-def load_trades():
+def load_trades(include_seen=False):
+    """include_seen=True 時，也回傳動作為「曾持有」的列（side=0，只用於歷史足跡）。"""
     rows = read_tab("交易紀錄", required=("代號", "動作", "價格", "股數"))
     if rows is None:
         rows = DEFAULT_TRADES
@@ -60,6 +67,11 @@ def load_trades():
         act = str(r.get("動作", "")).strip()
         side = 1 if act in ("買", "買進", "買入", "BUY", "buy", "B") else -1 if act in ("賣", "賣出", "SELL", "sell", "S") else 0
         price, qty = fnum(r.get("價格")), fnum(r.get("股數"))
+        if code and act in ("曾持有", "持有過", "舊"):
+            if include_seen:
+                trades.append({"date": parse_date(r.get("日期")), "code": code, "name": r.get("名稱") or code,
+                               "side": 0, "price": 0, "qty": 0, "type": "", "note": r.get("備註", ""), "row": i})
+            continue
         if not code or not side or not price or not qty:
             if code:
                 warn(f"交易紀錄第 {i + 2} 列看不懂（代號/動作/價格/股數），已略過")
@@ -75,6 +87,8 @@ def compute_holdings(trades):
     """移動平均成本法：買進加權平均，賣出按平均成本扣除並計算已實現損益。"""
     pos, realized = {}, 0.0
     for t in trades:
+        if not t["side"]:
+            continue
         p = pos.setdefault(t["code"], {"code": t["code"], "name": t["name"], "qty": 0.0, "cost": 0.0, "type": t["type"]})
         p["name"] = t["name"] or p["name"]
         if t["side"] > 0:
@@ -94,21 +108,6 @@ def compute_holdings(trades):
     for p in holdings:
         p["avg"] = p["cost"] / p["qty"]
     return holdings, realized
-
-
-def load_watch(trades):
-    """觀察清單 = 交易紀錄裡出現過的所有股票 + 「觀察」分頁手動加的。"""
-    items = {}
-    for t in trades:
-        items.setdefault(t["code"], {"code": t["code"], "name": t["name"], "note": "曾經操作"})
-    rows = read_tab("觀察", required=("代號",))
-    if rows is None:
-        rows = [{"代號": c, "名稱": n, "備註": ""} for c, n in DEFAULT_WATCH]
-    for r in rows:
-        code = norm_code(r.get("代號"))
-        if code and enabled(r.get("啟用")):
-            items.setdefault(code, {"code": code, "name": r.get("名稱") or code, "note": r.get("備註", "")})
-    return list(items.values())
 
 
 def load_alerts():
@@ -144,15 +143,3 @@ def load_alerts():
         rules.append({"id": f"{code}|{direction}|{kind}|{target}", "code": code, "name": r.get("名稱") or code,
                       "direction": direction, "kind": kind, "target": target, "label": cond})
     return rules
-
-
-def load_candidates():
-    rows = read_tab("候選池", required=("代號", "產業"))
-    if not rows:
-        return []
-    out = []
-    for r in rows:
-        code = norm_code(r.get("代號"))
-        if code and r.get("產業"):
-            out.append({"code": code, "name": r.get("名稱") or code, "sector": r["產業"].strip()})
-    return out

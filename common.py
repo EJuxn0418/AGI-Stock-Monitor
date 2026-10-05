@@ -14,7 +14,7 @@ try:
 except ImportError:  # 本機測試用
     yf = None
 
-VERSION = "DV.02.000"
+VERSION = "DV.03.000"
 TW = timezone(timedelta(hours=8))
 BT = "\u0060"  # Discord 行內程式碼符號
 
@@ -35,6 +35,8 @@ def mono(x):
 
 
 def warn(msg):
+    if str(msg) in WARNINGS:
+        return
     print("[WARN]", msg)
     WARNINGS.append(str(msg))
 
@@ -84,17 +86,32 @@ def make_embeds(title, fields, color, description=None, footer=None):
     return embeds
 
 
+def _esize(e):
+    n = len(e.get("title", "")) + len(e.get("description", "") or "") + len(e.get("footer", {}).get("text", ""))
+    return n + sum(len(f["name"]) + len(f["value"]) for f in e.get("fields", []))
+
+
 def send(webhook_env, embeds, label=""):
-    """每張卡片各發一則訊息；遇到限流會等待重試。失敗會記錄成錯誤，不會默默吞掉。"""
+    """把多張卡片打包成訊息發送（每則最多 10 張、5500 字）；遇到限流會等待重試。失敗會記錄成錯誤，不會默默吞掉。"""
     url = env(webhook_env)
     if not url:
         warn(f"{label}：GitHub Secrets 沒有設定 {webhook_env}，略過發送")
         return False
-    ok = True
+    batches, cur, size = [], [], 0
     for e in embeds:
+        es = _esize(e)
+        if cur and (len(cur) >= 10 or size + es > 5500):
+            batches.append(cur)
+            cur, size = [], 0
+        cur.append(e)
+        size += es
+    if cur:
+        batches.append(cur)
+    ok = True
+    for batch in batches:
         for attempt in range(3):
             try:
-                r = requests.post(url, json={"embeds": [e]}, timeout=15)
+                r = requests.post(url, json={"embeds": batch}, timeout=15)
                 if r.status_code == 429:
                     wait = 2.0
                     try:
@@ -182,7 +199,7 @@ def _parse_mis(m):
     except Exception:
         dd = None
     return {"price": price, "date": dd, "time": m.get("t", ""), "name": m.get("n", ""),
-            "prev_close": fnum(m.get("y")), "src": "TWSE"}
+            "prev_close": fnum(m.get("y")), "open": fnum(m.get("o")), "volume": fnum(m.get("v")), "src": "TWSE"}
 
 
 def resolve(codes):
@@ -261,7 +278,7 @@ def is_trading_day():
 
 # ---------------------------------------------------------------- 日K
 def daily_history(tickers, period="150d"):
-    """一次批次下載日K，回傳 {ticker: DataFrame(Close, Volume)}，索引為日期。"""
+    """一次批次下載日K，回傳 {ticker: DataFrame(Open, Close, Volume)}，索引為日期。"""
     tickers = list(dict.fromkeys(tickers))
     out = {}
     if not tickers or yf is None:
@@ -285,7 +302,7 @@ def daily_history(tickers, period="150d"):
             if sub is None or "Close" not in sub:
                 warn(f"{t} 抓不到日K")
                 continue
-            sub = sub[["Close", "Volume"]].dropna(subset=["Close"])
+            sub = sub[["Open", "Close", "Volume"]].dropna(subset=["Close"])
             if sub.empty:
                 warn(f"{t} 抓不到日K")
                 continue
