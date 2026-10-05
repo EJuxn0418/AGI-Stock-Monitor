@@ -12,6 +12,9 @@ on:
         type: choice
         options: [test, morning, midday, close, afternoon, spf, intraday, weekly]
 
+permissions:
+  contents: write
+
 concurrency:
   group: agi-${{ inputs.task }}
   cancel-in-progress: false
@@ -45,6 +48,7 @@ jobs:
           WH_PORTFOLIO_SUMMARY: ${{ secrets.WH_PORTFOLIO_SUMMARY }}
           WH_KEY_WATCH: ${{ secrets.WH_KEY_WATCH }}
           WH_TRADE_LOG: ${{ secrets.WH_TRADE_LOG }}
+          WH_RADAR: ${{ secrets.WH_RADAR }}
           WH_RADAR_SEMICON: ${{ secrets.WH_RADAR_SEMICON }}
           WH_RADAR_COOLING: ${{ secrets.WH_RADAR_COOLING }}
           WH_RADAR_POWER: ${{ secrets.WH_RADAR_POWER }}
@@ -56,6 +60,17 @@ jobs:
           WH_WEEKLY: ${{ secrets.WH_WEEKLY }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python run.py ${{ inputs.task }}
+
+      - name: Commit signal log
+        if: always() && inputs.task == 'afternoon'
+        run: |
+          if [ -f logs/signals.csv ] && [ -n "$(git status --porcelain logs)" ]; then
+            git config user.name "agi-bot"
+            git config user.email "agi-bot@users.noreply.github.com"
+            git add logs/signals.csv
+            git commit -m "訊號紀錄 $(TZ=Asia/Taipei date +%F)"
+            git pull --rebase && git push
+          fi
 
       - name: Save alert state
         if: always() && inputs.task == 'intraday'
