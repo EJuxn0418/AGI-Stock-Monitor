@@ -1,7 +1,8 @@
 """永豐期貨研究報告：盤後抓今天新出的報告連結。"""
 import requests
 from bs4 import BeautifulSoup
-from common import make_embeds, send, today_tw, error
+from common import send, today_tw, error
+import ui
 
 URL = "https://www.spf.com.tw/sinopacSPF/research/list.do?id=1709f20d3ff00000d8e2039e8984ed51"
 KEYWORDS = ("期貨", "日報", "法人", "盤後", "籌碼")
@@ -29,7 +30,7 @@ def fetch():
         if full in seen:
             continue
         seen.add(full)
-        found.append({"name": f"📰 {title[:200]}", "value": f"[開啟報告]({full})", "inline": False})
+        found.append(f"📰 [{title[:120]}]({full})")
     return found
 
 
@@ -40,8 +41,9 @@ def run():
         error(f"永豐期貨網站抓取失敗：{ex}")
         return "抓取失敗"
     if not fields:
-        fields = [{"name": "今日尚未找到報告", "value": f"可能還沒發布，或網站改版。[手動查看]({URL})", "inline": False}]
-        send("WH_SPF_REPORT", make_embeds("📈 永豐期貨盤後報告", fields, 0x7F8C8D), label="永豐期貨")
+        send("WH_SPF_REPORT", [ui.embed("📈 永豐期貨盤後報告", f"今天還沒找到報告，可能尚未發布或網站改版\n[手動查看]({URL})", ui.GRAY)],
+             label="永豐期貨")
         return "沒有找到今日報告"
-    send("WH_SPF_REPORT", make_embeds("📈 永豐期貨盤後報告", fields, 0x2980B9), label="永豐期貨")
+    send("WH_SPF_REPORT", [ui.embed(f"📈 永豐期貨盤後報告｜{today_tw():%m/%d}", f"**{len(fields)} 份**\n{ui.RULE}\n" + "\n".join(fields), ui.GRAY)],
+         label="永豐期貨")
     return f"{len(fields)} 份報告"

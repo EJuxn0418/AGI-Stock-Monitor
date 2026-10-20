@@ -14,7 +14,7 @@ try:
 except ImportError:  # 本機測試用
     yf = None
 
-VERSION = "DV.03.000"
+VERSION = "DV.04.000"
 TW = timezone(timedelta(hours=8))
 BT = "\u0060"  # Discord 行內程式碼符號
 

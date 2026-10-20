@@ -21,6 +21,7 @@ TASKS = {
     "intraday":  ("盤中警報", [("警報引擎", lambda: __import__("alerts").run())], True),
     "weekly":    ("每週龍頭建議", [("龍頭排名", lambda: __import__("weekly").run())], False),
     "test":      ("手動連線測試", [("各頻道 webhook", sys_log.channel_test)], False),
+    "legend":    ("符號說明", [("符號說明", sys_log.legend)], False),
 }
 
 

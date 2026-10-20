@@ -5,6 +5,7 @@ import os
 from common import (resolve, live_quotes, daily_history, ma_snapshot, make_embeds, send,
                     mono, today_tw, now_tw)
 from config import load_alerts
+import ui
 
 STATE_FILE = os.path.join("state", "alert_state.json")
 
@@ -59,14 +60,17 @@ def check(rules, live, hist, ymap, state):
             word = "跌破" if r["direction"] == "below" else "站上"
             what = f"{r['target']} 日線" if r["kind"] == "ma" else f"{line:g} 元"
             price = snap["price"]
+            below = r["direction"] == "below"
             fired.append({
                 "direction": r["direction"],
-                "field": {
-                    "name": f"{'🟢📉' if r['direction'] == 'below' else '🔴📈'} {r['name']} {r['code']}　{word} {what}",
-                    "value": "\n".join([f"現價 {mono(f'{price:.2f}')}　參考線 {mono(f'{line:.2f}')}（{gap:+.2f}%）",
-                                        f"時間 {q.get('time') or now_tw().strftime('%H:%M')}"]),
-                    "inline": False,
-                },
+                "embed": ui.embed(
+                    f"{'📉' if below else '📈'} {r['name']} {r['code']}　{word} {what}",
+                    f"{'🟢' if below else '🔴'} 現價 **{ui.px(price)}**，{'低於' if below else '高於'}參考線 {gap:+.2f}%",
+                    ui.GREEN if below else ui.RED,
+                    [{"name": "現價", "value": f"**{ui.px(price)}**", "inline": True},
+                     {"name": "參考線", "value": ui.px(line), "inline": True},
+                     {"name": "差距", "value": f"{gap:+.2f}%", "inline": True}],
+                    f"觸發 {q.get('time') or now_tw().strftime('%H:%M')} · 今天不再重複通知"),
             })
     return fired
 
@@ -82,8 +86,7 @@ def run():
     state = load_state()
     fired = check(rules, live, hist, ymap, state)
     save_state(state)
-    for direction, title, color in (("below", "📉 跌破警報", 0x2ECC71), ("above", "📈 站上警報", 0xE74C3C)):  # 台股：紅漲綠跌
-        fields = [f["field"] for f in fired if f["direction"] == direction]
-        if fields:
-            send("WH_ALERT", make_embeds(title, fields, color), label="警報")
+    if fired:
+        fired.sort(key=lambda f: f["direction"] != "below")  # 跌破的排前面
+        send("WH_ALERT", [f["embed"] for f in fired], label="警報")
     return f"{len(rules)} 條規則，觸發 {len(fired)} 條"
