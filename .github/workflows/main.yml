@@ -10,7 +10,7 @@ on:
         required: true
         default: "test"
         type: choice
-        options: [test, morning, midday, close, afternoon, spf, intraday, weekly]
+        options: [test, morning, midday, close, afternoon, spf, intraday, weekly, legend]
 
 permissions:
   contents: write
